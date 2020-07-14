@@ -17,8 +17,8 @@ geom_curve_link(
   ...,
   curvature = NA,
   angle = 90,
-  ncp = 20,
-  h.ratio = 1,
+  ncp = 1,
+  hratio = 0.5,
   arrow = NULL,
   arrow.fill = NULL,
   lineend = "butt",
@@ -70,7 +70,7 @@ a call to a position adjustment function.}
 \item{ncp}{The number of control points used to draw the curve.
     More control points creates a smoother curve.}
 
-\item{h.ratio}{numeric, control the link height, default is 1.}
+\item{hratio}{numeric, control the link height, default is 0.5 .}
 
 \item{arrow}{specification for arrow heads, as created by arrow().}
 

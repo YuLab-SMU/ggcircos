@@ -7,7 +7,7 @@
 #'
 #' @inheritParams ggplot2::layer
 #' @inheritParams grid::curveGrob
-#' @param h.ratio numeric, control the link height, default is 1.
+#' @param hratio numeric, control the link height, default is 0.5 .
 #' @param arrow specification for arrow heads, as created by arrow().
 #' @param arrow.fill fill colour to use for the arrow head (if closed). `NULL`
 #'        means use `colour` aesthetic.
@@ -23,8 +23,8 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
                             ...,
                             curvature = NA,
                             angle = 90,
-                            ncp = 20,
-                            h.ratio = 1,
+                            ncp = 1,
+                            hratio = 0.5,
                             arrow = NULL,
                             arrow.fill = NULL,
                             lineend = "butt",
@@ -48,7 +48,7 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
       ncp = ncp,
       lineend = lineend,
       na.rm = na.rm,
-      h.ratio = h.ratio,
+      hratio = hratio,
       ...
     )
   )
@@ -66,8 +66,8 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
 #' @export
 GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
     default_aes = aes(colour = "black", size = 0.3, linetype = 1, alpha = 0.4, curvature=NA),
-    draw_panel = function(data, panel_params, coord, h.ratio = 1,
-                          angle = 90, ncp = 20, arrow = NULL, arrow.fill = NULL, 
+    draw_panel = function(data, panel_params, coord, hratio = 0.5,
+                          angle = 90, ncp = 1, arrow = NULL, arrow.fill = NULL, 
                           lineend = "butt", na.rm = FALSE) {
 
     if (!coord$is_linear()){
@@ -82,15 +82,21 @@ GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
         starts <- trans[trans$group==1, ,drop=FALSE]
         ends <- trans[trans$group==2, ,drop=FALSE]
         if (all(is.na(trans$curvature))){
-            curvature <- unlist(mapply(build_curvature, starttheta=starts$theta, endtheta=ends$theta, SIMPLIFY=FALSE))
+            curvature <- unlist(mapply(build_curvature, 
+                                       starttheta=starts$theta, 
+                                       endtheta=ends$theta, 
+                                       MoreArgs=list(hratio=hratio, ncp=ncp),
+                                       SIMPLIFY=FALSE))
         }
-        curvature <- h.ratio * curvature
         ends <- rename(subset(ends, select=c(x, y)), c("xend"="x", "yend"="y"))
         trans <- cbind(starts, ends)
         trans$group <- tmpgroup
         trans$curvature <- curvature
     }else{
         trans <- coord$transform(data, panel_params)
+        if (all(is.na(trans$curvature))){
+            trans$curvature <- 0.5
+        }
     }
     arrow.fill <- arrow.fill %|||% trans$colour
     grobs <- lapply(seq_len(nrow(trans)), function(i){
@@ -110,14 +116,3 @@ GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
   }
 )
 
-"%|||%" <- function(x, y){
-    if (is.null(x)){
-        return (y)
-    }else{
-        if (length(x)<length(y)){
-            return (y)
-        }else{
-            return (x)
-        }
-    }
-}
