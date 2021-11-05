@@ -66,7 +66,7 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
 #' @export
 GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
     default_aes = aes(colour = "black", size = 0.3, linetype = 1, alpha = 0.4, curvature=NA),
-    draw_panel = function(data, panel_params, coord, hratio = 0.5,
+    draw_panel = function(data, panel_params, coord, hratio = 0.5, #outward = TRUE,
                           angle = 90, ncp = 1, arrow = NULL, arrow.fill = NULL, 
                           lineend = "butt", na.rm = FALSE) {
 

@@ -39,6 +39,59 @@ build_curvature <- function(starttheta, endtheta, hratio, ncp){
     return(curvature)
 }
 
+generate_curvature2 <- function(starttheta, endtheta, hratio, ncp){
+    flag <- endtheta - starttheta
+    newflag <- min(c(abs(flag), 2 * pi - abs(flag)))
+    if (flag > 0) {
+        if (flag <= pi) {
+            origin_direction <- -1
+        }
+        else {
+            origin_direction <- 1
+        }
+    }
+    else {
+        if (abs(flag) <= pi) {
+            origin_direction <- 1
+        }
+        else {
+            origin_direction <- -1
+        }
+    }
+    if (newflag > pi/2) {
+        curvature <- hratio * origin_direction * pi/newflag
+    }
+    else {
+        curvature <- hratio * origin_direction * (1 - newflag/pi)
+    }
+    return(curvature)
+}
+
+
+generate_curvature <- function(starttheta, endtheta, hratio, ncp){
+    flag <- endtheta - starttheta
+    newflag <- min(c(abs(flag), 2 * pi - abs(flag)))
+    if (flag > 0) {
+        if (flag <= pi) {
+            origin_direction <- 1
+        }
+        else {
+            origin_direction <- -1
+        }
+    }
+    else {
+        if (abs(flag) <= pi) {
+            origin_direction <- -1
+        }
+        else {
+            origin_direction <- 1
+        }
+    }
+    curvature <- hratio * origin_direction * (1 - newflag/pi)
+    return(curvature)
+}
+
+
 #' @importFrom utils getFromNamespace
 ggname <- getFromNamespace("ggname", "ggplot2")
 
@@ -53,3 +106,5 @@ ggname <- getFromNamespace("ggname", "ggplot2")
         }
     }
 }
+
+new_data_frame <- getFromNamespace("new_data_frame", "ggplot2")

@@ -1,0 +1,56 @@
+#' @importFrom pillar tbl_sum
+#' @method tbl_sum tbl_edge
+#' @export
+tbl_sum.tbl_edge <- function(x, ...){
+    header <- NextMethod()
+    names(header) <- "An Edge tibble"
+    header
+}
+
+
+#' @method tbl_sum tbl_node
+#' @export
+tbl_sum.tbl_node <- function(x, ...){
+    header <- NextMethod()
+    names(header) <- "A Node tibble"
+    header
+}
+
+#' @method print tbl_link
+#' @export
+print.tbl_link <- function(x, ..., n = 6, width = NULL, n_extra = NULL){
+    edge.tbl <- attr(x, "edges")
+    x <- drop_class(x, "tbl_link")
+    print_subtle("# A tbl_link abstraction: ", nrow(x), " nodes and ", nrow(edge.tbl), " edges\n", sep="\n")
+    print(x, ..., n = n, width = width, n_extra = n_extra)
+    print_subtle("#\n")
+    print_subtle("# With the available attributes: \n#\n# ",  extract_external_attr_name(x), "\n")
+    print_subtle("#\n")
+    print(edge.tbl, ..., n = n, width = width, n_extra = n_extra)
+}
+
+
+print_subtle <- function(...){
+    cat(pillar::style_subtle(paste0(...)))
+}
+
+drop_class <- function(x, class){
+    old <- class(x)
+    class(x) <- old[!old %in% class]
+    return(x)
+}
+
+add_attr <- function(x, y, class){
+    attr(x, class) <- y
+    x
+}
+
+calculate_angle <- function(data){
+    data$angle <- 360/(diff(range(data$y)) + 1) * (data$y)
+    return(data)
+}
+
+extract_external_attr_name <- function(x){
+    xx <- names(attributes(x))
+    paste0(xx[!xx %in% c("class", "row.names", "names")], collapse=", ")
+}
