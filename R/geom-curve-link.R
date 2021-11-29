@@ -62,6 +62,7 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
 #' @importFrom ggplot2 ggproto GeomSegment aes
 #' @importFrom dplyr rename
 #' @importFrom grid curveGrob gpar gTree
+#' @importFrom scales alpha
 #' @author Shuangbin Xu
 #' @export
 GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
@@ -107,7 +108,7 @@ GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
                           square = FALSE, squareShape = 1, inflect = FALSE, open = TRUE,
                           gp = gpar(col = alpha(trans$colour[i], trans$alpha[i]),
                                     fill = alpha(arrow.fill[i], trans$alpha[i]),
-                                    lwd = trans$size[i] * .pt,
+                                    lwd = trans$size[i] * ggplot2::.pt,
                                     lty = trans$linetype[i],
                                     lineend = lineend),
                           arrow = arrow)})

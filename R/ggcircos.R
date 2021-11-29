@@ -9,7 +9,7 @@
 #' @importFrom ggplot2 aes_ ggplot coord_polar scale_y_continuous
 #' @importFrom utils modifyList
 #' @export
-ggcircos <- function(x, mapping = NULL, layout = "linear", radius = 1, ncp = 4, hratio= 0.5, ...){
+ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4, hratio= 0.5, ...){
     layout <- match.arg(layout, c("linear", "circular"))
 
     if (is.null(mapping)){

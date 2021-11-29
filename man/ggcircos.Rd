@@ -7,7 +7,7 @@
 ggcircos(
   x,
   mapping = NULL,
-  layout = "linear",
+  layout = "circular",
   radius = 1,
   ncp = 4,
   hratio = 0.5,
