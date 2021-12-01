@@ -10,6 +10,7 @@ Authors@R:
 Description: What the package does (one paragraph).
 Imports: 
     ggplot2,
+    ggtreeExtra,
     scales,
     rlang,
     utils,
@@ -18,7 +19,8 @@ Imports:
     pillar,
     tibble,
     magrittr,
-    corrr
+    corrr,
+    ggnewscale
 License: GPL-3
 Encoding: UTF-8
 LazyData: true

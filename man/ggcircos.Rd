@@ -32,3 +32,7 @@ ggcircos(
 \description{
 visualizing relationship data and heterogenous associated data based on grammar of graphics
 }
+\examples{
+data(mtcars)
+mtcars \%>\% cor \%>\% as.tbl_lk() \%>\% ggcircos()
+}

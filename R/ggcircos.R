@@ -7,8 +7,12 @@
 #' @param hratio numeric
 #' @param ... additional parameter
 #' @importFrom ggplot2 aes_ ggplot coord_polar scale_y_continuous
+#' @importFrom ggplot2 scale_x_continuous
 #' @importFrom utils modifyList
 #' @export
+#' @examples
+#' data(mtcars)
+#' mtcars %>% cor %>% as.tbl_lk() %>% ggcircos()
 ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4, hratio= 0.5, ...){
     layout <- match.arg(layout, c("linear", "circular"))
 
@@ -25,7 +29,8 @@ ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4
     if (layout %in% c("circular")){
         p <- p +
              coord_polar(theta = "y", start = -pi/2, -1, clip = "off") +
-             scale_y_continuous(limits = c(0, NA))
+             scale_y_continuous(expand = c(0, 0.2)) +
+             scale_x_continuous(expand = c(0, 0.6, 0, 0.02))
     }
     assign("layout", layout, envir = p$plot_env)
     return(p)
