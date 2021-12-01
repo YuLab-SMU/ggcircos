@@ -1,11 +1,47 @@
-# #' @importFrom ggplot2 ggplot_add
-# #' @method ggplot_add link_lab
-# #' @export
-# ggplot_add.link_lab <- function(){
-# 
-# }
+#' @importFrom ggplot2 ggplot_add
+#' @importFrom ggfun get_aes_var
+#' @importFrom ggtree geom_text2
+#' @method ggplot_add link_lab
+#' @export
+ggplot_add.link_lab <- function(object, plot, object_name){
+    layout <- get_circos_layout(plot)
+    if (layout == "circular"){
+        dat1 <- tl_extract(
+                  name = !!rlang::sym("node")
+                )(plot$data)
+        dat2 <- tl_extract(
+                  name = !!rlang::sym("node")
+                )(plot$data)
+        subset1 <- "(angle < 90 | angle > 270)"
+        subset2 <- "(angle >= 90 & angle <=270)"
+        m1 <- aes_string(subset=subset1, x="x", y="y", angle="angle", label="label")
+        m2 <- aes_string(subset=subset2, x="x", y="y", angle="angle+180", label="label")        
+        if (!is.null(object$mapping)) {
+            if (!is.null(object$mapping$subset)) {
+                newsubset1 <- paste0(as.expression(get_aes_var(object$mapping, "subset")), '&', subset1)
+                newsubset2 <- paste0(as.expression(get_aes_var(object$mapping, "subset")), '&', subset2)
+                m1 <- aes_string(angle = "angle", node = "node", subset = newsubset1)
+                m2 <- aes_string(angle = "angle+180", node = "node", subset = newsubset2)
+            }
+            m1 <- modifyList(object$mapping, m1)
+            m2 <- modifyList(object$mapping, m2)
+        }
+        params1 <- params2 <- object$params
+        params1$data <- dat1
+        params2$data <- dat2
+        params1$mapping <- m1
+        params2$mapping <- m2
+        params1$nudge_x <- params1$offset
+        params2$nudge_x <- params2$offset
+        params1$hjust <- object$hjust
+        params2$hjust <- 1 - object$hjust
+        obj <- list(do.call("geom_text2", params1), do.call("geom_text2", params2))
+        ggplot_add(obj, plot, object_name)
+    }
+}
 
-#' @importFrom ggplot2 ggplot_add aes_string
+#' @importFrom ggplot2 ggplot_add aes_string 
+#' @importFrom ggplot2 scale_color_manual
 #' @method ggplot_add circos_panel
 #' @importFrom ggnewscale new_scale_color
 #' @export
@@ -95,6 +131,33 @@ ggplot_add.circos_panel <- function(object, plot, object_name){
     object$mapping = modifyList(object$mapping, aes_string(x=paste0("new_",xid)))
     params <- c(list(data=dat, mapping=object$mapping, inherit.aes=object$inherit.aes), object$params)
     obj <- do.call(object$geom, params)
+    ggplot_add(obj, plot, object_name)
+    if (object$axis.params$axis != "none"){
+        obj.axis <- build_axis(dat=dat,
+                               xid=xid,
+                               text=object$axis.params$text,
+                               position=object$params$position,
+                               axis.params=object$axis.params,
+                               axis.dot.params=object$axis.dot.params,
+                               y.range = range(refdat$y))
+        obj <- list(obj, obj.axis)
+    }
+    if (!is.null(object$grid.params)){
+        obj.grid <- build_grid(dat=dat,
+                               xid=xid,
+                               position=object$params$position,
+                               grid.params=object$grid.params,
+                               grid.dot.params=object$grid.dot.params,
+                               y.range = range(refdat$y))
+        obj <- list(obj.grid, obj)
+    }
+    # because original y is continuous, but y of box plot density plot is discrete
+    # to combine them, should map y to group or color, but sometimes group box
+    # or density plot is also a demand, so group should not be mapped,
+    # only left color.
+    if (object$geomname %in% c(dodpos, densitypos)){
+        obj <- list(obj, scale_color_manual(values=c(rep("black", length(dat$y))), guide="none"), new_scale_color())
+    }
     ggplot_add(obj, plot, object_name)
 }
 

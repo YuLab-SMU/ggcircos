@@ -11,6 +11,8 @@ Description: What the package does (one paragraph).
 Imports: 
     ggplot2,
     ggtreeExtra,
+    ggtree,
+    ggfun,
     scales,
     rlang,
     utils,

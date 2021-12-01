@@ -67,4 +67,8 @@ get_continuous_norm <- getFromNamespace("get_continuous_norm", "ggtreeExtra")
 
 normxy <- getFromNamespace("normxy", "ggtreeExtra")
 
+build_axis <- getFromNamespace("build_axis", "ggtreeExtra")
+
+build_grid <- getFromNamespace("build_grid", "ggtreeExtra")
+
 warning_wrap <- getFromNamespace("warning_wrap", "ggplot2")
