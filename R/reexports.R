@@ -6,6 +6,18 @@ magrittr::`%>%`
 #' @export
 magrittr::`%<>%`
 
+#' @importFrom ggtree td_filter
+#' @export
+ggtree::td_filter
+
+#' @importFrom ggtree td_unnest
+#' @export
+ggtree::td_unnest
+
+#' @importFrom ggtree td_mutate
+#' @export
+ggtree::td_mutate
+
 #' @importFrom ggtreeExtra position_dodgex2
 #' @export
 ggtreeExtra::position_dodgex2

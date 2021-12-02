@@ -5,6 +5,9 @@
 \alias{reexports}
 \alias{\%>\%}
 \alias{\%<>\%}
+\alias{td_filter}
+\alias{td_unnest}
+\alias{td_mutate}
 \alias{position_dodgex2}
 \alias{position_dodgex}
 \alias{position_points_sinax}
@@ -21,6 +24,8 @@ These objects are imported from other packages. Follow the links
 below to see their documentation.
 
 \describe{
+  \item{ggtree}{\code{\link[ggtree]{td_filter}}, \code{\link[ggtree]{td_mutate}}, \code{\link[ggtree]{td_unnest}}}
+
   \item{ggtreeExtra}{\code{\link[ggtreeExtra]{position_dodgex}}, \code{\link[ggtreeExtra:position_dodgex]{position_dodgex2}}, \code{\link[ggtreeExtra]{position_identityx}}, \code{\link[ggtreeExtra]{position_jitterdodgex}}, \code{\link[ggtreeExtra]{position_jitterx}}, \code{\link[ggtreeExtra]{position_points_jitterx}}, \code{\link[ggtreeExtra]{position_points_sinax}}, \code{\link[ggtreeExtra]{position_raincloudx}}, \code{\link[ggtreeExtra]{position_stackx}}}
 
   \item{magrittr}{\code{\link[magrittr:compound]{\%<>\%}}, \code{\link[magrittr:pipe]{\%>\%}}}

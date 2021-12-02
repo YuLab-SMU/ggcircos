@@ -11,6 +11,7 @@ ggcircos(
   radius = 1,
   ncp = 4,
   hratio = 0.5,
+  alpha = 0.4,
   ...
 )
 }
@@ -26,6 +27,8 @@ ggcircos(
 \item{ncp}{numeric}
 
 \item{hratio}{numeric}
+
+\item{alpha}{numeric}
 
 \item{...}{additional parameter}
 }

@@ -5,6 +5,7 @@
 #' @param radius numeric the radius of the circular layout
 #' @param ncp numeric
 #' @param hratio numeric
+#' @param alpha numeric
 #' @param ... additional parameter
 #' @importFrom ggplot2 aes_ ggplot coord_polar scale_y_continuous
 #' @importFrom ggplot2 scale_x_continuous
@@ -13,7 +14,7 @@
 #' @examples
 #' data(mtcars)
 #' mtcars %>% cor %>% as.tbl_lk() %>% ggcircos()
-ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4, hratio= 0.5, ...){
+ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4, hratio= 0.5, alpha=.4, ...){
     layout <- match.arg(layout, c("linear", "circular"))
 
     if (is.null(mapping)){
@@ -24,7 +25,7 @@ ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4
     p <- ggplot(
            data = tidy_link(x, radius = radius, ...)
          ) +
-         geom_curve_link(mapping = mapping, ncp = ncp, hratio = hratio, ...) +
+         geom_curve_link(mapping = mapping, ncp = ncp, hratio = hratio, alpha = alpha, ...) +
          theme_blank()
     if (layout %in% c("circular")){
         p <- p +

@@ -59,14 +59,29 @@ geom_curve_link <- function(mapping = NULL, data = NULL,
 #' @format NULL
 #' @usage NULL
 #' @importFrom rlang abort
-#' @importFrom ggplot2 ggproto GeomSegment aes
+#' @importFrom ggplot2 ggproto
+#' @importFrom ggplot2 Geom
+#' @importFrom ggplot2 aes
+#' @importFrom ggplot2 draw_key_path
 #' @importFrom dplyr rename
 #' @importFrom grid curveGrob gpar gTree
 #' @importFrom scales alpha
 #' @author Shuangbin Xu
 #' @export
-GeomCurveLink <- ggproto("GeomCurveLink", GeomSegment,
+GeomCurveLink <- ggproto("GeomCurveLink", Geom,
+    required_aes = c("x", "y", "xend", "yend"),
+    non_missing_aes = c("linetype", "size", "shape"),
+    optional_aes = c("subset"),
     default_aes = aes(colour = "black", size = 0.3, linetype = 1, alpha = 0.4, curvature=NA),
+    draw_key = draw_key_path,
+
+    setup_data = function(data, params){
+        if (!is.null(data$subset)){
+            data <- data[which(data$subset),,drop=FALSE]
+        }
+        data
+    },
+
     draw_panel = function(data, panel_params, coord, hratio = 0.5, #outward = TRUE,
                           angle = 90, ncp = 1, arrow = NULL, arrow.fill = NULL, 
                           lineend = "butt", na.rm = FALSE) {
