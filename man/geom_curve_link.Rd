@@ -15,10 +15,6 @@ geom_curve_link(
   stat = "identity",
   position = "identity",
   ...,
-  curvature = NA,
-  angle = 90,
-  ncp = 1,
-  hratio = 0.5,
   arrow = NULL,
   arrow.fill = NULL,
   lineend = "butt",
@@ -56,21 +52,6 @@ layer, as a string.}
 a call to a position adjustment function.}
 
 \item{...}{Arguments to be passed to \code{curveGrob}.}
-
-\item{curvature}{A numeric value giving the amount of curvature.
-    Negative values produce left-hand curves, positive values
-    produce right-hand curves, and zero produces a straight line.}
-
-\item{angle}{A numeric value between 0 and 180,
-    giving an amount to skew the control
-    points of the curve.  Values less than 90 skew the curve towards
-    the start point and values greater than 90 skew the curve
-    towards the end point.}
-
-\item{ncp}{The number of control points used to draw the curve.
-    More control points creates a smoother curve.}
-
-\item{hratio}{numeric, control the link height, default is 0.5 .}
 
 \item{arrow}{specification for arrow heads, as created by arrow().}
 
