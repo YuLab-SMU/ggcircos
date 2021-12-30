@@ -5,17 +5,16 @@
 #' @export
 ggplot_add.link_lab <- function(object, plot, object_name){
     layout <- get_circos_layout(plot)
+    dat1 <- tl_extract(
+              name = !!rlang::sym("node")
+            )(plot$data)
+    geomlayer <- select_lab_geom(geom=object$geom)
     if (layout == "circular"){
-        dat1 <- tl_extract(
-                  name = !!rlang::sym("node")
-                )(plot$data)
-        dat2 <- tl_extract(
-                  name = !!rlang::sym("node")
-                )(plot$data)
+        dat2 <- dat1
         subset1 <- "(angle < 90 | angle > 270)"
         subset2 <- "(angle >= 90 & angle <=270)"
         m1 <- aes_string(subset=subset1, x="x", y="y", angle="angle", label="label")
-        m2 <- aes_string(subset=subset2, x="x", y="y", angle="angle+180", label="label")        
+        m2 <- aes_string(subset=subset2, x="x", y="y", angle="angle+180", label="label")
         if (!is.null(object$mapping)) {
             if (!is.null(object$mapping$subset)) {
                 newsubset1 <- paste0(as.expression(get_aes_var(object$mapping, "subset")), '&', subset1)
@@ -31,13 +30,24 @@ ggplot_add.link_lab <- function(object, plot, object_name){
         params2$data <- dat2
         params1$mapping <- m1
         params2$mapping <- m2
-        params1$nudge_x <- params1$offset
-        params2$nudge_x <- params2$offset
+        params1$nudge_x <- object$offset
+        params2$nudge_x <- object$offset
         params1$hjust <- object$hjust
         params2$hjust <- 1 - object$hjust
-        obj <- list(do.call("geom_text2", params1), do.call("geom_text2", params2))
-        ggplot_add(obj, plot, object_name)
+        obj <- list(do.call(geomlayer, params1), do.call(geomlayer, params2))
+    }else if (layout == 'linear'){
+        params <- object$params
+        params$data <- dat1
+        m <- aes_string(x = "x", y = "y", label = "label")
+        if (!is.null(object$mapping)){
+            m <- modifyList(object$mapping, m)
+        }
+        params$mapping <- m
+        params$hjust <- object$hjust
+        params$nudge_x <- object$offset 
+        obj <- do.call(geomlayer, params)
     }
+    ggplot_add(obj, plot, object_name)
 }
 
 #' @importFrom ggplot2 ggplot_add aes_string 

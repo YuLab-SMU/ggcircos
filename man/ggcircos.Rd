@@ -9,8 +9,8 @@ ggcircos(
   mapping = NULL,
   layout = "circular",
   radius = 1,
-  ncp = 4,
-  hratio = 0.5,
+  ncp = 5,
+  hratio = 0.8,
   alpha = 0.4,
   ...
 )

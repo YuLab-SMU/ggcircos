@@ -14,7 +14,7 @@
 #' @examples
 #' data(mtcars)
 #' mtcars %>% cor %>% as.tbl_lk() %>% ggcircos()
-ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4, hratio= 0.5, alpha=.4, ...){
+ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 5, hratio= .8, alpha=.4, ...){
     layout <- match.arg(layout, c("linear", "circular"))
 
     if (is.null(mapping)){
@@ -30,9 +30,14 @@ ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 4
     if (layout %in% c("circular")){
         p <- p +
              coord_polar(theta = "y", start = -pi/2, -1, clip = "off") +
-             scale_y_continuous(limits=c(0, NA)) + 
-             #scale_y_continuous(expand = c(0, 0.2)) +
-             scale_x_continuous(expand = c(0, 0.6, 0, 0.02))
+             scale_y_continuous(expand = c(0, 0.6, 0, 0.2)) + 
+             scale_x_continuous(expand = c(0, 0.6, 0, 0.01))
+    }else if (layout == 'linear'){
+        p <- p + 
+             scale_x_continuous(
+               expand = c(0, 0.1, 0, .1), 
+               #limits = c(0, NA)
+             )
     }
     assign("layout", layout, envir = p$plot_env)
     return(p)

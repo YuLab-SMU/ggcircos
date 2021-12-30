@@ -103,3 +103,15 @@ get_circos_layout <- function(plot_view=NULL){
 get_offset_ <- function(vnum, ratio){
     offset <- ratio*max(vnum, na.rm=TRUE)
 }
+
+#' @importFrom yulab.utils get_fun_from_pkg
+select_lab_geom <- function(geom){
+    geom <- match.arg(geom, c("text", "label", "shadowtext"))
+    geom <- switch(
+              geom,
+              label = get_fun_from_pkg("ggtree", "geom_label2"),
+              text = get_fun_from_pkg("ggtree", "geom_text2"),
+              shadowtext = get_fun_from_pkg("shadowtext", "geom_shadowtext")
+          )
+    return(geom)
+}

@@ -4,7 +4,15 @@
 \alias{geom_link_lab}
 \title{the node label layer of circos}
 \usage{
-geom_link_lab(data = NULL, mapping = NULL, hjust = 0, offset = 0, ...)
+geom_link_lab(
+  data = NULL,
+  mapping = NULL,
+  hjust = 0,
+  offset = 0,
+  geom = "text",
+  as_ylab = FALSE,
+  ...
+)
 }
 \arguments{
 \item{data}{input data}
@@ -14,6 +22,11 @@ geom_link_lab(data = NULL, mapping = NULL, hjust = 0, offset = 0, ...)
 \item{hjust}{horizontal adjustment to nudge labels}
 
 \item{offset}{Horizontal adjustment to nudge labels by.}
+
+\item{geom}{one of 'text', 'label', 'shadowtext'.}
+
+\item{as_ylab}{logical display tip labels as y-axis label, only works for \code{linear} layout.
+default is FALSE.}
 
 \item{...}{additional parameters.}
 }

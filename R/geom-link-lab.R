@@ -3,6 +3,9 @@
 #' @param mapping mapping aesthetics
 #' @param hjust horizontal adjustment to nudge labels
 #' @param offset Horizontal adjustment to nudge labels by.
+#' @param geom one of 'text', 'label', 'shadowtext'.
+#' @param as_ylab logical display tip labels as y-axis label, only works for \code{linear} layout.
+#' default is FALSE.
 #' @param ... additional parameters.
 #' @export
 geom_link_lab <- function(
@@ -10,14 +13,16 @@ geom_link_lab <- function(
     mapping = NULL,
     hjust = 0, 
     offset = 0, 
-    #as_ylab = FALSE, 
+    geom = "text",
+    as_ylab = FALSE, 
     ...){
     params <- list(...)
     structure(list(
                    mapping = mapping,
                    hjust = hjust,
                    offset = offset,
-                   #as_ylab = as_ylab,
+                   geom = geom,
+                   as_ylab = as_ylab,
                    params = params
                    ),
                class = "link_lab"

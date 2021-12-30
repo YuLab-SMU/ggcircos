@@ -74,7 +74,7 @@ GeomCurveLink <- ggproto("GeomCurveLink", Geom,
         data
     },
     draw_panel = function(data, panel_params, coord, shape = 0.5, arrow = NULL,
-                          hratio = 1, ncp = 1, arrow.fill = NULL, lineend = "butt", 
+                          hratio = .8, ncp = 1, arrow.fill = NULL, lineend = "butt", 
                           na.rm = FALSE) {
 
       if (!coord$is_linear()){
@@ -105,10 +105,11 @@ GeomCurveLink <- ggproto("GeomCurveLink", Geom,
           trans <- coord$transform(data, panel_params)
           logicflag <- trans$y < trans$yend
           if (all(is.na(trans$curvature))){
-              trans$curvature <- ifelse(logicflag, -1, 1) * 0.5
+              trans$curvature <- ifelse(logicflag, -1, 1) * abs(hratio)
           }else{
               trans$curvature <- ifelse(logicflag, -1, 1) * abs(trans$curvature)
           }
+          
       }
       arrow.fill <- arrow.fill %|||% trans$colour
       grobs <- lapply(seq_len(nrow(trans)), function(i){

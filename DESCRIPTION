@@ -22,7 +22,8 @@ Imports:
     tibble,
     magrittr,
     corrr,
-    ggnewscale
+    ggnewscale,
+    yulab.utils
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
