@@ -75,8 +75,8 @@ GeomCurveLink <- ggproto("GeomCurveLink", Geom,
     },
     draw_panel = function(data, panel_params, coord, shape = 0.5, arrow = NULL,
                           hratio = .8, ncp = 1, arrow.fill = NULL, lineend = "butt", 
-                          na.rm = FALSE) {
-
+                          direction = 'left', na.rm = FALSE) {
+      direction <- match.arg(direction, c("left", "right"))
       if (!coord$is_linear()){
           tmpgroup <- data$group
           starts <- subset(data, select = c(-xend, -yend))
@@ -105,9 +105,17 @@ GeomCurveLink <- ggproto("GeomCurveLink", Geom,
           trans <- coord$transform(data, panel_params)
           logicflag <- trans$y < trans$yend
           if (all(is.na(trans$curvature))){
-              trans$curvature <- ifelse(logicflag, -1, 1) * abs(hratio)
+              if (direction == 'left'){
+                  trans$curvature <- ifelse(logicflag, -1, 1) * abs(hratio)
+              }else if (direction == 'right'){
+                  trans$curvature <- ifelse(logicflag, 1, -1) * abs(hratio)
+              }
           }else{
-              trans$curvature <- ifelse(logicflag, -1, 1) * abs(trans$curvature)
+              if (direction == 'left'){
+                  trans$curvature <- ifelse(logicflag, -1, 1) * abs(trans$curvature)
+              }else if (direction == 'right'){
+                  trans$curvature <- ifelse(logicflag, 1, -1) * abs(trans$curvature)
+              }
           }
           
       }

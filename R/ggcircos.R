@@ -13,7 +13,10 @@
 #' @export
 #' @examples
 #' data(mtcars)
-#' mtcars %>% cor %>% as.tbl_lk() %>% ggcircos()
+#' tbl <- mtcars %>% cor() %>% as.tbl_lk()  
+#' p1 <- ggcircos(tbl)
+#' p2 <- ggcircos(tbl, layout = 'linear')
+#' p3 <- ggcircos(tbl, layout = 'linear', direction = 'right')
 ggcircos <- function(x, mapping = NULL, layout = "circular", radius = 1, ncp = 5, hratio= .8, alpha=.4, ...){
     layout <- match.arg(layout, c("linear", "circular"))
 

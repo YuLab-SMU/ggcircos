@@ -37,5 +37,8 @@ visualizing relationship data and heterogenous associated data based on grammar 
 }
 \examples{
 data(mtcars)
-mtcars \%>\% cor \%>\% as.tbl_lk() \%>\% ggcircos()
+tbl <- mtcars \%>\% cor() \%>\% as.tbl_lk()  
+p1 <- ggcircos(tbl)
+p2 <- ggcircos(tbl, layout = 'linear')
+p3 <- ggcircos(tbl, layout = 'linear', direction = 'right')
 }
