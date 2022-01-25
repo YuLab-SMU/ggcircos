@@ -31,6 +31,29 @@ tidy_link.tbl_lk <- function(x, radius = 1, ...){
     edge.tbl
 }
 
+#' @method tidy_link tbl_graph
+#' @export
+tidy_link.tbl_graph <- function(x, radius = 1, ...){
+    edge.tbl <- x %>% edge_tibble()
+
+    x %<>% 
+        node_tibble() %>% 
+        dplyr::mutate(node = seq_len(nrow(.)), 
+                      x = radius, 
+                      y = seq_len(nrow(.))) %>%
+        calculate_angle()
+    if ("name" %in% colnames(x)){
+        x$label <- x$name
+    }else{
+        x$label <- x$node
+    }
+    edge.tbl %<>%
+        dplyr::mutate(x = radius, xend = radius) %>%
+        dplyr::filter(.data$from != .data$to) %>%
+        add_attr(y=x, attrobj="nodes")
+
+    return(edge.tbl)
+}
 
 #' tl_extract
 #' @param name character name of attributes

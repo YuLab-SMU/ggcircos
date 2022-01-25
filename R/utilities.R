@@ -65,3 +65,8 @@ extract_external_attr_name <- function(x){
 
 #' @importFrom utils globalVariables
 globalVariables(".")
+
+#' @importFrom utils getFromNamespace
+node_tibble <- getFromNamespace("node_tibble", "tidygraph")
+
+edge_tibble <- getFromNamespace("edge_tibble", "tidygraph")

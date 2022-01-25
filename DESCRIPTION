@@ -24,6 +24,8 @@ Imports:
     corrr,
     ggnewscale,
     yulab.utils
+Suggests:
+    tidygraph
 License: GPL-3
 Encoding: UTF-8
 LazyData: true
