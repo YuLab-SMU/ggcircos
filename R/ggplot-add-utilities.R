@@ -26,13 +26,14 @@ check_subset_aes_ <- function(object){
 }
 
 #' @importFrom rlang as_name
+#' @importFrom cli cli_alert_warning
 build_new_data_ <- function(object, plot){
     if (inherits(object$data, "data.frame") && !object$datanull){
         origindata <- tl_extract(name = !!rlang::sym("node"))(plot$data)
         commonnames <- intersect(colnames(object$data), colnames(origindata))
         commonnames <- commonnames[commonnames!=as_name(object$mapping$y)]
         if (length(commonnames) > 0){
-            warning_wrap("The following column names/name: ", paste0(commonnames, collapse=", "),
+            cli_alert_warning("The following column names/name: ", paste0(commonnames, collapse=", "),
                          " are/is the same to tree data, the tree data column names are : ",
                          paste0(colnames(origindata), collapse=", "), ".")
         }

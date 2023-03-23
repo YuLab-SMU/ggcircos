@@ -107,4 +107,4 @@ ggname <- getFromNamespace("ggname", "ggplot2")
     }
 }
 
-new_data_frame <- getFromNamespace("new_data_frame", "ggplot2")
+#new_data_frame <- getFromNamespace("new_data_frame", "ggplot2")

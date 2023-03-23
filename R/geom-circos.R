@@ -159,6 +159,9 @@ geom_circos <- function(
                                 line.alpha=1,
                                 inherit.aes=FALSE)
     params <- list(...)
+    if (check_orientation(x = geomname) && !'orientation' %in% names(params)){
+        params <- c(params, orientation = 'y')
+    }    
     grid.params <- reset_params(defaultp=default.grid.params,
                                 inputp=enquo(grid.params))
     axis.params <- reset_params(defaultp=default.axis.params,

@@ -83,4 +83,4 @@ build_axis <- getFromNamespace("build_axis", "ggtreeExtra")
 
 build_grid <- getFromNamespace("build_grid", "ggtreeExtra")
 
-warning_wrap <- getFromNamespace("warning_wrap", "ggplot2")
+check_orientation <- getFromNamespace('check_orientation', 'ggtreeExtra')

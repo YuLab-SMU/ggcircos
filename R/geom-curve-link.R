@@ -1,10 +1,9 @@
 #' @title Line curves in coordinate polar y
-#' 
+#' @description
 #' `geom_curve_link` draw a curve line between points (x,y) and (xend, yend) in
 #' coordinate polar (y). 
 #' the curvature parameter will be calculated in internal (default). You also 
 #' can set it by manually, we don't recommend to set it by manually.
-#'
 #' @inheritParams ggplot2::layer
 #' @inheritParams grid::curveGrob
 #' @param arrow specification for arrow heads, as created by arrow().
