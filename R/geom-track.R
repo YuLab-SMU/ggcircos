@@ -91,7 +91,8 @@ geom_track <- function(mapping = NULL,
         node_col <- column_or_string(node_quo, "node")
         position <- position_track(
             band = band, node = node_col, geom_name = geom,
-            anchored = spec$anchored, stack = stack, scales = scales,
+            anchored = spec$anchored, band_fill = spec$band,
+            stack = stack, scales = scales,
             limits = limits, baseline = baseline, width = width, offset = offset
         )
     } else if (!inherits(position, "PositionTrack")) {
@@ -140,18 +141,21 @@ geom_track <- function(mapping = NULL,
 #'
 #' `anchored` geoms stretch from the band's inner edge to the mapped value;
 #' the others sit at the band's centre when no value is mapped. `rect` marks
-#' the entries that need `ymin`/`ymax`.
+#' the entries that need `ymin`/`ymax`. `band` marks the entries that fill
+#' the whole radial band (`tile`): their `xmin`/`xmax` are the band edges,
+#' not a mapped value, and their angular extent comes from the bin split in
+#' [track_angles()].
 #' @keywords internal
 #' @noRd
 track_geom_spec <- function(geom) {
     specs <- list(
-        col = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE),
-        bar = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE),
-        area = list(stat = "identity", geom = GeomTrackArea, anchored = TRUE, rect = TRUE),
-        boxplot = list(stat = StatTrackBox, geom = GeomTrackCrossbar, anchored = FALSE, rect = TRUE),
-        point = list(stat = "identity", geom = GeomTrackPoint, anchored = FALSE, rect = FALSE),
-        tile = list(stat = "identity", geom = GeomTrackTile, anchored = FALSE, rect = FALSE),
-        text = list(stat = "identity", geom = GeomTrackText, anchored = FALSE, rect = FALSE)
+        col = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE),
+        bar = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE),
+        area = list(stat = "identity", geom = GeomTrackArea, anchored = TRUE, rect = TRUE, band = FALSE),
+        boxplot = list(stat = StatTrackBox, geom = GeomTrackCrossbar, anchored = FALSE, rect = TRUE, band = FALSE),
+        point = list(stat = "identity", geom = GeomTrackPoint, anchored = FALSE, rect = FALSE, band = FALSE),
+        tile = list(stat = "identity", geom = GeomTrackTile, anchored = FALSE, rect = TRUE, band = TRUE),
+        text = list(stat = "identity", geom = GeomTrackText, anchored = FALSE, rect = FALSE, band = FALSE)
     )
     if (!is.character(geom) || length(geom) != 1L || !geom %in% names(specs)) {
         ggcircos_abort(
@@ -165,17 +169,19 @@ track_geom_spec <- function(geom) {
 
 #' Add the angle columns a track layer needs
 #'
-#' Translates the node id column into `y` (the node's angle), `ymin`/`ymax`
-#' (its arc, shrunk by `width`) and, for tiles, `width`/`height`. This runs
-#' once, when the layer is added, because ggplot2 runs positions *after* the
-#' geom setup: anything a geom lists in `required_aes` must exist by then.
+#' Translates the node id column into `y` (the node's angle) and `ymin`/`ymax`
+#' (its arc, shrunk by `width`; for `"tile"`, the arc split into one bin per
+#' row of that node). This runs once, when the layer is added, because
+#' ggplot2 runs positions *after* the geom setup: anything a geom lists in
+#' `required_aes` must exist by then. The radial extent of a tile band is the
+#' position's job, not this function's.
 #'
 #' @param data Layer data.
 #' @param node Name of the node id column.
 #' @param layout A `circos_layout` (or its node table).
 #' @param width Fraction of the node arc used by the layer.
 #' @param geom Track geometry name.
-#' @param band_width Radial width of the band, used to size tiles.
+#' @param ... Ignored; kept so older calls that passed `band_width` still work.
 #' @return `data` with the angle columns added.
 #' @examples
 #' lay <- circos_layout(cor(mtcars))
@@ -183,8 +189,7 @@ track_geom_spec <- function(geom) {
 #'     data.frame(id = colnames(mtcars)), "id", lay, 0.9, "col"
 #' ))
 #' @export
-track_angles <- function(data, node, layout, width = 0.9, geom = "col",
-                         band_width = NULL) {
+track_angles <- function(data, node, layout, width = 0.9, geom = "col", ...) {
     node_col <- column_or_string(rlang::enquo(node), "node")
     nt <- if (inherits(layout, "circos_layout")) layout$nodes else layout
     if (is.null(nt)) {
@@ -206,20 +211,29 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
     }
     arc <- (nt$theta1[idx] - nt$theta0[idx]) %% (2 * pi)
     arc[is.na(arc)] <- nt$width[idx][is.na(arc)]
-    half <- arc * width / 2
     theta <- nt$theta[idx]
     data$.circos_theta <- theta
     data$.circos_arc <- arc
     if (!"x" %in% names(data)) data$x <- 0  # placeholder; the position owns it
     data$y <- theta
-    data$ymin <- theta - half
-    data$ymax <- theta + half
     if (identical(geom, "tile")) {
-        # a tile's `width` is radial, `height` angular: they are not the same
-        # number of radians as the arc, so the radial one comes from the band
-        data$width <- 2 * half
-        data$height <- 2 * half
-        if (!is.null(band_width)) data$width <- band_width * width
+        # A tile track is a *sequence of bins* along the node's arc: rows that
+        # share a node split its arc evenly, in data order. Overlapping them
+        # all on the full arc (the old behaviour) makes a heatmap track
+        # unusable, which is the whole point of the geometry.
+        #
+        # The angular extent goes through ymin/ymax, not the `width`/`height`
+        # aesthetics: those are aesthetics, and a data column with an
+        # aesthetic's name is overwritten by the layer's default_aes.
+        k <- as.numeric(stats::ave(seq_along(idx), idx, FUN = seq_along))
+        m <- as.numeric(stats::ave(seq_along(idx), idx, FUN = length))
+        bin_w <- arc * width / m
+        data$ymin <- nt$theta0[idx] + (arc - bin_w * m) / 2 + (k - 1) * bin_w
+        data$ymax <- data$ymin + bin_w
+    } else {
+        half <- arc * width / 2
+        data$ymin <- theta - half
+        data$ymax <- theta + half
     }
     data
 }
@@ -249,6 +263,8 @@ track_defaults <- function(rect) {
 #'   standalone use needs the numeric form.
 #' @param node Name of the node id column; only used to group stacks.
 #' @param anchored Stretch from the band's inner edge (default `FALSE`).
+#' @param band_fill Fill the whole band radially (`xmin = r0`, `xmax = r1`)
+#'   instead of scaling a value into it. Set by [geom_track()] for `"tile"`.
 #' @param stack,scales,limits,baseline,width,offset See [geom_track()].
 #' @param geom_name Name of the track geometry.
 #'
@@ -279,6 +295,7 @@ position_track <- function(band,
                            node = NULL,
                            geom_name = NULL,
                            anchored = FALSE,
+                           band_fill = FALSE,
                            stack = FALSE,
                            scales = c("free", "fixed"),
                            limits = NULL,
@@ -317,6 +334,7 @@ position_track <- function(band,
         width = width,
         offset = offset,
         anchored = anchored,
+        band_fill = band_fill,
         node = node
     )
 }
@@ -390,6 +408,15 @@ track_band <- function(name, fallback, node_table) {
 #' @noRd
 track_map_values <- function(data, r0, r1, self,
                              anchored = FALSE, group_values = NULL) {
+    if (isTRUE(self$band_fill)) {
+        # a tile track fills the band radially: every row spans [r0, r1] and
+        # its angular extent is the bin split from track_angles(). The x
+        # column is a placeholder, not a value to scale.
+        data$xmin <- r0
+        data$xmax <- r1
+        data$x <- (r0 + r1) / 2
+        return(data)
+    }
     if (!"x" %in% names(data)) {
         mid <- (r0 + r1) / 2
         data$x <- mid
@@ -525,8 +552,14 @@ GeomTrackPoint <- ggproto("GeomTrackPoint", GeomPoint,
 #' @importFrom ggplot2 GeomTile
 #' @export
 GeomTrackTile <- ggproto("GeomTrackTile", GeomTile,
-    required_aes = "y",
-    optional_aes = c("x", "width", "height", "fill", "colour", "linewidth", "linetype", "alpha")
+    required_aes = c("y", "ymin", "ymax"),
+    optional_aes = c("x", "fill", "colour", "linewidth", "linetype", "alpha"),
+    # GeomTile$setup_data derives xmin/xmax/ymin/ymax from the width/height
+    # *aesthetics*, whose defaults are one whole radian: that would swallow
+    # the per-node bin split track_angles() computed, which is exactly the
+    # B7 bug. The band's radial extent and the bins' angular extent both
+    # arrive as columns, so pass the data through untouched.
+    setup_data = function(data, params) data
 )
 
 #' @rdname ggcircos-ggproto

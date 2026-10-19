@@ -59,6 +59,33 @@ test_that("track layers build in their declared bands", {
     expect_equal(max(b$data[[2]]$xmax), 1.28, tolerance = 1e-6)
 })
 
+test_that("tile tracks split each node arc into one bin per row (B7)", {
+    set.seed(4)
+    vals <- data.frame(
+        id = rep(colnames(mtcars), each = 4L),
+        value = runif(ncol(mtcars) * 4L),
+        stringsAsFactors = FALSE
+    )
+    p <- ggcircos(cor(mtcars), order = "hclust", tracks = c(heat = 0.15)) +
+        geom_track(data = vals, aes(fill = value), node = id, geom = "tile", band = "heat")
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    nd <- ggcircos:::layout_nodes(ggcircos:::circos_layout_of(p))
+
+    # the band is filled radially, not collapsed to its centre line
+    expect_equal(min(d$xmin), 1.02, tolerance = 1e-6)
+    expect_equal(max(d$xmax), 1.17, tolerance = 1e-6)
+
+    # the bins of one node are contiguous and together cover width * arc
+    for (id in nd$id) {
+        s <- d[which(vals$id == id), ]
+        s <- s[order(s$ymin), ]
+        expect_equal(sum(s$ymax - s$ymin), 0.9 * nd$width[1], tolerance = 1e-9)
+        if (nrow(s) > 1) {
+            expect_equal(s$ymin[-1], s$ymax[-nrow(s)], tolerance = 1e-9)
+        }
+    }
+})
+
 test_that("the node column can be unquoted, a string, or a string variable", {
     set.seed(2)
     vals <- data.frame(
@@ -195,6 +222,29 @@ test_that("rotate is not silently dropped by the add path (B13)", {
     expect_false("rotate" %in% ggcircos:::geometry_params)
     expect_false("nudge_x" %in% ggcircos:::geometry_params)
     expect_false("angle" %in% ggcircos:::geometry_params)
+})
+
+test_that("the axis draws lines, not white blobs (B8)", {
+    # pathGrob's default fill is white: with two rings that painted over
+    # every layer under the axis. The grob must be unfilled.
+    m <- cor(mtcars)
+    p <- ggcircos(m, order = "hclust", tracks = c(values = 0.2)) +
+        geom_chord(aes(fill = r)) +
+        geom_track_axis(band = "values", limits = c(0, 1))
+    g <- ggplot2::ggplotGrob(p)
+    idx <- which(vapply(g$grobs, function(x) !is.null(x$name) && grepl("^panel", x$name), logical(1)))
+    kids <- g$grobs[[idx[1]]]$children
+    ax <- kids[[which(vapply(kids, function(x) !is.null(x$name) && grepl("track_axis", x$name), logical(1)))]]
+    lines_grob <- ax$children[[1]]
+    expect_true(is.null(lines_grob$gp$fill) || all(is.na(lines_grob$gp$fill)))
+    # the chord layer must still be present and visible under the axis
+    expect_true(any(vapply(kids, function(x) !is.null(x$name) && grepl("chord", x$name), logical(1))))
+    # labels are readable: one per break, at distinct radii
+    txt <- ax$children[[2]]
+    expect_equal(sort(as.character(txt$label)), c("0.0", "0.5", "1.0"))
+    d <- ggplot2::ggplot_build(p)$data[[2]]
+    radii <- d$x[nzchar(d$label)]
+    expect_equal(length(unique(round(radii, 6))), length(radii))
 })
 
 test_that("plots roundtrip through rds and facet", {

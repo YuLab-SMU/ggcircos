@@ -547,7 +547,7 @@ geom_track(
 | `"area"` | 是 | `"identity"` | `GeomArea` | |
 | `"boxplot"` | 是 | `StatTrackBox`（本包） | `GeomCrossbar` | 分位数由 stat 算，不用 `stat_boxplot` |
 | `"point"` | 否（缺省 = 带中心） | `"identity"` | `GeomPoint` | 标数值就写 `x` |
-| `"tile"` | 否（缺省 = 带中心） | `"identity"` | `GeomTile` | 热图轨道通常只映射 `fill` |
+| `"tile"` | 否 | `"identity"` | `GeomTrackTile` | 热图轨道：径向填满 band（`band_fill`），同节点的行按数据顺序等分该节点弧（B7） |
 | `"text"` | 否（缺省 = 带中心） | `"identity"` | `GeomText` | |
 
 不在表里 → `ggcircos_error_data`（消息列出可用值）。`"violin"` v0.1 不支持（§17-7）。
@@ -621,8 +621,11 @@ geom_track_axis(band, breaks = NULL, limits, labels = waiver(),
 ```
 
 - **`limits` 必填**（明确不猜别的层的数据范围）。
-- `breaks = NULL` → `pretty(limits, 4)`。
-- 画三样东西：`[r0, r1]` 两端沿节点环的弧线、在 `breaks` 处的径向刻度线、刻度标签（`r = r1 + tick.label`）。
+- `breaks = NULL` → `pretty(limits, 3)`。
+- 画三样东西：`[r0, r1]` 两端沿节点环的弧线、每个 break 在其**自身半径**上的短径向刻度、
+  刻度标签（放在该 break 半径再往外 `2·tick.length` 处，**切向**排，同 circlize 的 `circos.axis`）。
+  轴整体立在第一个节点的起始角（那里是 gap，不遮数据）。
+  ⚠ 刻度线 grob 必须 `fill = NA`（grid 默认填白，两个环会把轴下面的图层整个刷掉，B8）。
 - 只对声明的 band 生效；band 名未声明 → `ggcircos_error_band`。
 
 ### 6.6 图例

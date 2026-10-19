@@ -147,13 +147,30 @@ spec §7 说"空图合法"。`allocate_slots()` 会对 0 行表写入标量列�
 
 传入的参数进了 `params`，但 `GeomNodeArc$default_aes` 自己写死 `linewidth = 0.2`，`required_aes` 又不含它。
 
-### B7. `geom_track(tile)` 不可用
+### B7. `geom_track(tile)` 不可用 —— **已修（2026-10-20）**
 
-`track_angles()` 给 tile 写 `width = height = 2 * half`（`R/geom-track.R:185-191`），但 position 之后 `x`/`xmin`/`xmax` 又被覆盖成带中心点，tile 的 `width` 变成一个与 band 无关的数。实测所有 tile 的 `width`/`height` 都是 `1`，画出来是几个大块叠在中心。**热图轨道这条主线用不了**。
+两层原因：
+1. `track_angles()` 把 tile 的角跨度写进 `data$width`/`height`，但这两个是
+   `GeomTile` 的**美学**，`default_aes`（= 1 弧度）在 `compute_aesthetics` 阶段把数据列覆盖掉；
+2. `GeomTile$setup_data` 又用 `width`/`height` 美学反推 `xmin/xmax/ymin/ymax`，把一切打回原形。
 
-### B8. `geom_track_axis()` 的标签全压在 `theta0[1]`
+修法：tile 走 rect 通道——`track_angles()` 按"同节点的行等分该节点弧"算 `ymin/ymax`（bin），
+`position_track(band_fill = TRUE)` 把 `xmin/xmax` 填成带边界，`GeomTrackTile$setup_data`
+透传不改。回归测试：`test-tracks-and-contract.R` 的 `"tile tracks split each node arc"`。
 
-`track_axis_data()`（`R/geom-track-axis.R`）把 `breaks` 的标签全部放在 `theta0[1]` 一处，没有沿环分布；`breaks` 只决定径向刻度的数量，不决定刻度位置（刻度在每个节点边界上）。图上看不到可读的刻度。
+### B8. `geom_track_axis()` 的标签全压在 `theta0[1]` —— **已修（2026-10-20）**
+
+三层原因，比报告里写的深：
+1. tick 端点用 `band[1]/band[2]`，**完全没读 `br[i]`**——刻度根本没标在断点上；
+2. `kind` 列不是美学，ggplot2 在 `draw_panel` 前把它丢了，`data$kind %||% "ring"`
+   的 fallback 让**每一行都成了 ring**（标签也当线画）；
+3. 最致命：`pathGrob` 的默认 `fill` 是**白色**——两个环路径各填出一个白色圆盘，
+   把轴下面的所有图层整个刷掉。所以"轴一上，图就空"。
+
+修法：刻度画在每个 break 自己的半径上（径向尺），标签放各自半径、切向排；
+`kind` 换成"label 非空 = 文本行"；`gpar(fill = NA)`；`id` 必须是数值
+（`match(group, unique(group))`，字符 id 会被 pathGrob 忽略、整层连成一团）。
+回归测试：`"the axis draws lines, not white blobs"`。
 
 ### B9. `theme_circos()` 没设 `panel.background`
 

@@ -287,8 +287,7 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
         node = params$node,
         layout = lay,
         width = params$width %||% 0.9,
-        geom = params$geom_name,
-        band_width = band[2] - band[1]
+        geom = params$geom_name
     )
     spec <- track_geom_spec(params$geom_name)
     object$mapping <- merge_mapping(
@@ -323,8 +322,11 @@ ggplot_add.ggcircos_axis <- function(object, plot, object_name, ...) {
         tick_length = params$tick.length %||% 0.02
     )
     object$inherit.aes <- FALSE
+    # `group` has to be mapped, not just present in the data frame: ggplot2
+    # drops every column that is not an aesthetic before draw_panel(), and
+    # the path segments need it to keep the rings apart from the ticks
     object$mapping <- ggplot2::aes(
-        x = .data$x, y = .data$y, label = .data$label
+        x = .data$x, y = .data$y, label = .data$label, group = .data$group
     )
     re_add(drop_geometry_params(object), plot, object_name)
 }

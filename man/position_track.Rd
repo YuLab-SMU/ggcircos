@@ -9,6 +9,7 @@ position_track(
   node = NULL,
   geom_name = NULL,
   anchored = FALSE,
+  band_fill = FALSE,
   stack = FALSE,
   scales = c("free", "fixed"),
   limits = NULL,
@@ -27,6 +28,9 @@ standalone use needs the numeric form.}
 \item{geom_name}{Name of the track geometry.}
 
 \item{anchored}{Stretch from the band's inner edge (default \code{FALSE}).}
+
+\item{band_fill}{Fill the whole band radially (\code{xmin = r0}, \code{xmax = r1})
+instead of scaling a value into it. Set by \code{\link[=geom_track]{geom_track()}} for \code{"tile"}.}
 
 \item{stack, scales, limits, baseline, width, offset}{See \code{\link[=geom_track]{geom_track()}}.}
 }

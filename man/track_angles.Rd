@@ -4,7 +4,7 @@
 \alias{track_angles}
 \title{Add the angle columns a track layer needs}
 \usage{
-track_angles(data, node, layout, width = 0.9, geom = "col", band_width = NULL)
+track_angles(data, node, layout, width = 0.9, geom = "col", ...)
 }
 \arguments{
 \item{data}{Layer data.}
@@ -17,16 +17,18 @@ track_angles(data, node, layout, width = 0.9, geom = "col", band_width = NULL)
 
 \item{geom}{Track geometry name.}
 
-\item{band_width}{Radial width of the band, used to size tiles.}
+\item{...}{Ignored; kept so older calls that passed \code{band_width} still work.}
 }
 \value{
 \code{data} with the angle columns added.
 }
 \description{
-Translates the node id column into \code{y} (the node's angle), \code{ymin}/\code{ymax}
-(its arc, shrunk by \code{width}) and, for tiles, \code{width}/\code{height}. This runs
-once, when the layer is added, because ggplot2 runs positions \emph{after} the
-geom setup: anything a geom lists in \code{required_aes} must exist by then.
+Translates the node id column into \code{y} (the node's angle) and \code{ymin}/\code{ymax}
+(its arc, shrunk by \code{width}; for \code{"tile"}, the arc split into one bin per
+row of that node). This runs once, when the layer is added, because
+ggplot2 runs positions \emph{after} the geom setup: anything a geom lists in
+\code{required_aes} must exist by then. The radial extent of a tile band is the
+position's job, not this function's.
 }
 \examples{
 lay <- circos_layout(cor(mtcars))

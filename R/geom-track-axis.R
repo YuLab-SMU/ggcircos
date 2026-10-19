@@ -55,7 +55,7 @@ geom_track_axis <- function(mapping = NULL,
             i = "Use the same limits you passed to {.fn geom_track}, e.g. {.code limits = c(0, 1)}."
         )
     }
-    if (is.null(breaks)) breaks <- pretty_within(limits, 4)
+    if (is.null(breaks)) breaks <- pretty_within(limits, 3)
     band_name <- if (is.character(band) && length(band) == 1L) band else NULL
     tag_layer(
         layer(
@@ -79,21 +79,34 @@ geom_track_axis <- function(mapping = NULL,
 
 #' Geometry of a track axis, built once when the layer is added
 #'
-#' Produces the rings, the radial ticks (one per node boundary) and the
-#' labels, all as rows tagged with `kind`.
+#' A track axis is a *radial ruler* standing at one angle (the first node's
+#' boundary, which is empty gap). Each break gets a short radial tick stub at
+#' its own radius, and the label sits at that same radius reading
+#' **tangentially** — the way circlize draws axis labels. Labels at one shared
+#' angle can only stay apart if the radius carries the value and the text
+#' runs across the radius, not along it.
+#'
+#' The old version put the tick ends at the band edges (ignoring the break
+#' radii entirely) and stacked every label on one point, so the scale was
+#' unreadable (B8).
+#'
+#' `kind` cannot be a column: ggplot2 drops anything that is not an aesthetic
+#' before `draw_panel()` sees it, which is why the old `%||%` fallback made
+#' every row a ring. Line rows therefore carry an empty `label` and text rows
+#' a non-empty one; `group` keeps the path segments apart.
 #' @keywords internal
 #' @noRd
 track_axis_data <- function(band, limits, breaks, labels, node_table, tick_length) {
     br <- rescale_from(breaks, limits[1], limits[2], band[1], band[2])
-    theta0 <- if (is.null(node_table) || !nrow(node_table)) {
+    theta_axis <- if (is.null(node_table) || !nrow(node_table)) {
         0
     } else {
-        node_table$theta0
+        node_table$theta0[1]
     }
     empty <- function(n) {
         data.frame(
             x = numeric(n), y = numeric(n), label = character(n),
-            group = character(n), kind = character(n),
+            group = character(n),
             stringsAsFactors = FALSE
         )
     }
@@ -102,18 +115,16 @@ track_axis_data <- function(band, limits, breaks, labels, node_table, tick_lengt
         d$x <- r
         d$y <- seq(0, 2 * pi, length.out = 181)
         d$group <- g
-        d$kind <- "ring"
+        d$label <- ""
         d
     }
-    ticks <- if (length(br) && length(theta0)) {
-        do.call(rbind, lapply(seq_along(br), function(i) {
-            d <- empty(2 * length(theta0))
-            d$x <- rep(c(band[1], band[2]), each = length(theta0))
-            d$y <- rep(theta0, 2)
-            d$group <- rep(paste0("b", i), each = length(theta0))
-            d$kind <- "tick"
-            d
-        }))
+    ticks <- if (length(br)) {
+        d <- empty(2L * length(br))
+        d$x <- as.vector(rbind(br, br + tick_length))
+        d$y <- theta_axis
+        d$group <- paste0("b", seq_along(br))
+        d$label <- ""
+        d
     } else {
         empty(0)
     }
@@ -123,11 +134,10 @@ track_axis_data <- function(band, limits, breaks, labels, node_table, tick_lengt
         as.character(labels)
     }
     text <- empty(length(br))
-    text$x <- band[2] + tick_length
-    text$y <- if (length(theta0)) theta0[1] else 0
+    text$x <- br + 2 * tick_length
+    text$y <- theta_axis
     text$label <- rep_len(lab, length(br))
     text$group <- "lab"
-    text$kind <- "label"
 
     out <- rbind(ring(band[1], "r0"), ring(band[2], "r1"), ticks, text)
     out$label[is.na(out$label)] <- ""
@@ -152,32 +162,45 @@ GeomTrackAxis <- ggproto("GeomTrackAxis", Geom,
         family = "", fontface = 1, lineheight = 1.2
     ),
     required_aes = c("x", "y"),
-    optional_aes = c("label", "kind", "group"),
+    optional_aes = c("label", "group"),
     draw_key = draw_key_blank,
     draw_panel = function(self, data, panel_params, coord,
                           line.size = 0.2, text.size = 3, na.rm = FALSE) {
         if (nrow(data) == 0L) return(grid::nullGrob())
-        kind <- data$kind %||% rep("ring", nrow(data))
-        lines <- data[kind != "label", , drop = FALSE]
-        texts <- data[kind == "label", , drop = FALSE]
+        # text rows are the ones carrying a label (see track_axis_data)
+        is_text <- nzchar(data$label %||% "")
+        lines <- data[!is_text, , drop = FALSE]
+        texts <- data[is_text, , drop = FALSE]
 
         line_grob <- if (nrow(lines) > 0) {
             pts <- coord$transform(lines, panel_params)
             pathGrob(
-                pts$x, pts$y, id = pts$group,
+                pts$x, pts$y,
+                # pathGrob wants a *numeric* id; a character one is dropped
+                # and every segment is joined into one blob
+                id = match(pts$group, unique(pts$group)),
                 default.units = "native",
                 gp = gpar(
                     col = lines$colour[1], lwd = line.size * ggcircos_pt,
-                    lty = lines$linetype[1], lineend = "butt"
+                    lty = lines$linetype[1], lineend = "butt",
+                    # grid's default path fill is white: the two rings would
+                    # paint over every layer under the axis
+                    fill = NA
                 )
             )
         } else {
             grid::nullGrob()
         }
         text_grob <- if (nrow(texts) > 0) {
+            # tangential: circos_label_angle already returns the tangent
+            # direction (the same one the node labels follow), with the
+            # left-half flip that keeps text upright. Each label sits at its
+            # own break radius, so the radius carries the value and the
+            # labels cannot collide.
             ang <- circos_label_angle(coord, panel_params, texts$y, TRUE)
             texts$angle <- ang$angle
-            texts$hjust <- ang$hjust
+            texts$hjust <- 0.5
+            texts$vjust <- -0.3
             texts$size <- text.size
             ggplot2::GeomText$draw_panel(texts, panel_params, coord)
         } else {
