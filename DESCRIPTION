@@ -1,34 +1,34 @@
 Package: ggcircos
-Title: What the Package Does (One Line, Title Case)
-Version: 0.0.0.9000
+Title: Circular Layouts and Chord Diagrams for 'ggplot2'
+Version: 0.1.0
 Authors@R: 
     person(given = "Shuangbin",
            family = "Xu",
            role = c("aut", "cre"),
            email = "xshuangbin@163.com",
            comment = c(ORCID="0000-0003-3513-5362"))
-Description: What the package does (one paragraph).
-Imports: 
-    ggplot2,
-    ggtreeExtra,
-    ggtree,
-    ggfun,
-    scales,
-    rlang,
-    utils,
-    dplyr,
-    grid,
-    pillar,
-    tibble,
-    magrittr,
-    corrr,
-    ggnewscale,
-    yulab.utils,
-    cli
-Suggests:
-    tidygraph
+Description: Build chord diagrams, circular tracks and genome-scale link
+    maps with the grammar of graphics. The layout — node arcs, sectors and
+    the angular slot reserved for every link — is computed once and kept as
+    data, so every layer is an ordinary 'ggplot2' layer and scales, facets
+    and themes work as usual.
 License: GPL-3
 Encoding: UTF-8
-LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+Imports:
+    ggplot2 (>= 4.0.0),
+    rlang,
+    cli,
+    grid,
+    scales,
+    stats,
+    utils
+Suggests:
+    tidygraph,
+    igraph,
+    testthat (>= 3.0.0),
+    vdiffr,
+    knitr,
+    rmarkdown
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.1

@@ -2,43 +2,69 @@
 % Please edit documentation in R/ggcircos.R
 \name{ggcircos}
 \alias{ggcircos}
-\title{visualizing relationship data and heterogenous associated data based on grammar of graphics}
+\title{Start a circular layout}
 \usage{
 ggcircos(
-  x,
-  mapping = NULL,
-  layout = "circular",
-  radius = 1,
-  ncp = 5,
-  hratio = 0.8,
-  alpha = 0.4,
+  data,
+  nodes = NULL,
+  sectors = NULL,
+  order = NULL,
+  layout = c("circular", "arc"),
+  gap = 0.01,
+  sector_gap = 0.05,
+  slot_fill = 0.9,
+  start = 0,
+  tracks = NULL,
+  track_offset = 0.02,
+  self_loops = FALSE,
+  radius = NULL,
   ...
 )
 }
 \arguments{
-\item{x}{data}
+\item{data}{A square \code{matrix}, a \code{data.frame} with \code{from}/\code{to} columns,
+a \code{tidygraph}/\code{igraph} object, or an existing \code{circos_layout}.}
 
-\item{mapping}{aesthetic mapping}
+\item{nodes, sectors, order, gap, sector_gap, slot_fill, start, tracks, track_offset, self_loops}{Passed to \code{\link[=circos_layout]{circos_layout()}}, which documents each of them.}
 
-\item{layout}{character, 'linear' or 'circular'}
+\item{layout}{\code{"circular"} for the polar layout, \code{"arc"} for the linear
+one, where links bulge to the left of a vertical spine.}
 
-\item{radius}{numeric the radius of the circular layout}
+\item{radius}{Base radius of the node ring. \code{ggcircos()} derives this from
+\code{layout}; you rarely need to set it.}
 
-\item{ncp}{numeric}
-
-\item{hratio}{numeric}
-
-\item{alpha}{numeric}
-
-\item{...}{additional parameter}
+\item{...}{Passed on to \code{\link[=circos_layout]{circos_layout()}}.}
+}
+\value{
+A ggplot with a ggcircos layout attached.
 }
 \description{
-visualizing relationship data and heterogenous associated data based on grammar of graphics
+Creates the plot that every other ggcircos layer attaches to. The layout
+— node arcs, sectors and the angular slot reserved for each link — is
+computed once, here, and stored as data; it is never modified afterwards.
+\code{ggcircos()} itself adds no layer, so you can draw links, node arcs,
+labels and outer tracks in any order.
 }
 \examples{
-data(mtcars)
-tbl <- mtcars \%>\% cor() \%>\% as.tbl_lk()  
-p1 <- ggcircos(tbl)
-p2 <- ggcircos(tbl, layout = 'linear')
-p3 <- ggcircos(tbl, layout = 'linear', direction = 'right')
+ggcircos(cor(mtcars), order = "hclust") +
+    geom_chord(aes(fill = r)) +
+    geom_node_arc() +
+    geom_node_text()
+
+# two genomes in two sectors
+nodes <- data.frame(
+    id = c("a", "b", "c", "d"),
+    genome = c("ref", "ref", "qry", "qry"),
+    stringsAsFactors = FALSE
+)
+links <- data.frame(
+    from = c("a", "c"), to = c("d", "b"),
+    stringsAsFactors = FALSE
+)
+ggcircos(links, nodes = nodes, sectors = "genome") +
+    geom_chord() +
+    geom_node_arc()
+}
+\seealso{
+\code{\link[=geom_chord]{geom_chord()}}, \code{\link[=geom_node_arc]{geom_node_arc()}}, \code{\link[=geom_track]{geom_track()}}
 }
