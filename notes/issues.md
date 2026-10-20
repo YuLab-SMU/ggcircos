@@ -445,6 +445,23 @@ w(0)=2.41  w(中)=0.29  w(1)=2.00   # 中段收成 1/8
 断言 `screen_angle()` 与 `transform()` 出来的径向方向逐点一致（容差 1e-6）；
 外加 `"rotated labels run along the ring, upright on both halves"`。
 
+### B28. 相邻 ribbon 糊在一起，缺可调的缝 —— **已加 `slot_gap`（2026-10-20）**
+
+和 circlize 并排看，我们的相邻 ribbon 在脚部糊成一片。原因不是没有缝，
+而是缝**按比例**算：`gap = (1 - slot_fill) · node_w / d_side`。节点弧宽、链接多时，
+0.9 的比例只剩 0.005 rad，屏幕上不到一个像素。
+
+circlize 用的是 `diffHeight = 2mm`（**固定物理高度**），所以窄弧上也留得出缝。
+
+新增 `slot_gap`（`ggcircos()` / `circos_layout()` 同名参数，默认 `NULL` 保持原行为）：
+给定数值时缝是**固定弧度**，上限 `node_w / (4·d_side)`（最多四分之一弧留给缝）；
+槽位吃掉剩余弧。配合 `geom_chord(..., colour = "white", linewidth = 0.15)` 的细白描边，
+相邻带子就能逐条分辨。
+
+回归测试：`"slot_gap gives every seam the same absolute width (R21)"`。
+**默认值没动**：把 `colour` 默认改成白色会让 `type = "line"` 的曲线也变白（同一美学），
+9 个测试报错，评估后放弃；描边仍需用户显式指定。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

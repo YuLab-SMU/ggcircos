@@ -18,6 +18,7 @@ circos_layout(
   sector_gap = 0.05,
   start = 0,
   slot_fill = 0.9,
+  slot_gap = NULL,
   self_loops = FALSE,
   tracks = NULL,
   track_offset = 0.06,
@@ -62,6 +63,12 @@ nodes.}
 
 \item{slot_fill}{Fraction of a node's arc that its link slots occupy
 (slots are centred inside the arc).}
+
+\item{slot_gap}{Absolute seam in radians between adjacent link slots on a
+node, the way \code{circlize::chordDiagram()}'s \code{diffHeight} is a fixed height.
+\code{NULL} (the default) keeps the seam at the \code{1 - slot_fill} fraction, which
+shrinks with the node's arc; a fixed value keeps the ribbons visibly
+separate on a wide ring with many links.}
 
 \item{self_loops}{Keep self-links (\code{from == to}). v0.1 cannot draw them,
 so they are dropped with a message.}

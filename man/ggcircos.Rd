@@ -13,6 +13,7 @@ ggcircos(
   gap = 0.01,
   sector_gap = 0.05,
   slot_fill = 0.9,
+  slot_gap = NULL,
   start = 0,
   tracks = NULL,
   track_offset = 0.06,
@@ -30,6 +31,11 @@ a \code{tidygraph}/\code{igraph} object, or an existing \code{circos_layout}.}
 
 \item{layout}{\code{"circular"} for the polar layout, \code{"arc"} for the linear
 one, where links bulge to the left of a vertical spine.}
+
+\item{slot_gap}{Absolute seam in radians between adjacent link slots, the
+way \code{circlize::chordDiagram()}'s \code{diffHeight} is a fixed height. \code{NULL}
+uses the \code{slot_fill} fraction; a fixed value keeps ribbons visibly
+separate when a node carries many links.}
 
 \item{radius}{Base radius of the node ring. \code{ggcircos()} derives this from
 \code{layout}; you rarely need to set it.}

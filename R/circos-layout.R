@@ -23,6 +23,11 @@
 #' @param start Angle (radians) of the first node arc.
 #' @param slot_fill Fraction of a node's arc that its link slots occupy
 #'   (slots are centred inside the arc).
+#' @param slot_gap Absolute seam in radians between adjacent link slots on a
+#'   node, the way `circlize::chordDiagram()`'s `diffHeight` is a fixed height.
+#'   `NULL` (the default) keeps the seam at the `1 - slot_fill` fraction, which
+#'   shrinks with the node's arc; a fixed value keeps the ribbons visibly
+#'   separate on a wide ring with many links.
 #' @param self_loops Keep self-links (`from == to`). v0.1 cannot draw them,
 #'   so they are dropped with a message.
 #' @param tracks Named numeric vector of outer track widths, e.g.
@@ -57,6 +62,7 @@ circos_layout <- function(x,
                           sector_gap = 0.05,
                           start = 0,
                           slot_fill = 0.9,
+                          slot_gap = NULL,
                           self_loops = FALSE,
                           tracks = NULL,
                           track_offset = 0.06,
@@ -238,6 +244,7 @@ circos_layout_build <- function(links,
                                 sector_gap = 0.05,
                                 start = 0,
                                 slot_fill = 0.9,
+                                slot_gap = NULL,
                                 self_loops = FALSE,
                                 tracks = NULL,
                                 track_offset = 0.06,
@@ -383,7 +390,7 @@ circos_layout_build <- function(links,
 
     sectors_df <- circos_sectors_table(nd)
 
-    links <- allocate_slots(links, nd, slot_fill)
+    links <- allocate_slots(links, nd, slot_fill, slot_gap)
     nd$n_links <- tabulate(
         match(c(links$from, links$to), nd$id),
         nbins = n
@@ -694,7 +701,7 @@ resolve_link_weights <- function(links, weight) {
 
 #' @keywords internal
 #' @noRd
-allocate_slots <- function(links, nodes, slot_fill = 0.9) {
+allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL) {
     n <- nrow(nodes)
     if (nrow(links) == 0L) {
         links$edge_id <- integer(0)
@@ -740,8 +747,21 @@ allocate_slots <- function(links, nodes, slot_fill = 0.9) {
     side_total <- stats::ave(ep$w, side_order, FUN = sum)
     share <- ifelse(side_total > 0, ep$w / side_total, 1 / n_slots[side_order])
     node_w <- nodes$width[ep$node_order]
-    ep$slot_w <- node_w * slot_fill * share
-    gap <- node_w * (1 - slot_fill) / n_slots[side_order]
+    # `slot_gap` is an absolute seam in radians, the way circlize's
+    # diffHeight is a fixed physical height. Slot widths then take whatever
+    # is left of the side; without it the seam is the (1 - slot_fill)
+    # fraction, which shrinks with the node's arc and disappears on a wide
+    # ring with many links.
+    n_side <- n_slots[side_order]
+    gap <- if (is.null(slot_gap)) {
+        node_w * (1 - slot_fill) / n_side
+    } else {
+        # at most a quarter of the arc may go to seams, so a node carrying
+        # many links still shows its ribbons
+        pmin(slot_gap, node_w / (n_side * 4))
+    }
+    usable <- node_w - n_side * gap
+    ep$slot_w <- pmax(usable, 0) * share
     before <- stats::ave(ep$slot_w + gap, side_order,
                          FUN = function(v) c(0, cumsum(v)[-length(v)]))
     start <- nodes$theta0[ep$node_order] + gap / 2 + before

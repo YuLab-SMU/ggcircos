@@ -22,6 +22,10 @@ label_space <- 0.22
 #'   node arcs proportional to the weight they carry, slots proportional to
 #'   their link's weight. Left `NULL` every node keeps an equal arc and the
 #'   values only drive `aes(fill = )`.
+#' @param slot_gap Absolute seam in radians between adjacent link slots, the
+#'   way `circlize::chordDiagram()`'s `diffHeight` is a fixed height. `NULL`
+#'   uses the `slot_fill` fraction; a fixed value keeps ribbons visibly
+#'   separate when a node carries many links.
 #' @param radius Base radius of the node ring. `ggcircos()` derives this from
 #'   `layout`; you rarely need to set it.
 #' @param ... Passed on to [circos_layout()].
@@ -58,6 +62,7 @@ ggcircos <- function(data,
                      gap = 0.01,
                      sector_gap = 0.05,
                      slot_fill = 0.9,
+                     slot_gap = NULL,
                      start = 0,
                      tracks = NULL,
                      track_offset = 0.06,
@@ -78,7 +83,8 @@ ggcircos <- function(data,
     lay <- circos_layout(
         data,
         nodes = nodes, sectors = sectors, order = order, gap = gap,
-        sector_gap = sector_gap, slot_fill = slot_fill, start = start,
+        sector_gap = sector_gap, slot_fill = slot_fill, slot_gap = slot_gap,
+        start = start,
         tracks = tracks, track_offset = track_offset,
         self_loops = self_loops, radius = radius, weight = weight_col, ...
     )

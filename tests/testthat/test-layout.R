@@ -438,3 +438,38 @@ test_that("weight makes the geometry follow the values (R18)", {
     zero <- data.frame(from = "a", to = "b", w = 0)
     expect_error(circos_layout(zero, weight = "w"), class = "ggcircos_error_data")
 })
+
+test_that("slot_gap gives every seam the same absolute width (R21)", {
+    m <- cor(mtcars)
+    wide <- circos_layout(m, order = "hclust", slot_gap = 0.02)
+    lk <- layout_links(wide)
+    gaps <- numeric(0)
+    for (side in c("from", "to")) {
+        ids <- lk[[side]]
+        st <- if (side == "from") lk$theta0 else lk$theta_end0
+        en <- if (side == "from") lk$theta1 else lk$theta_end1
+        for (id in unique(ids)) {
+            i <- which(ids == id)
+            i <- i[order(st[i])]
+            if (length(i) < 2) next
+            g <- (st[i[-1]] - en[i[-length(i)]]) %% (2 * pi)
+            gaps <- c(gaps, g)
+        }
+    }
+    # every seam is the requested width, unless the node's arc is too narrow
+    # to afford it (a quarter of the arc is the cap), and then it is the cap
+    nd <- layout_nodes(wide)
+    expect_true(all(gaps <= 0.02 + 1e-9))
+    expect_true(all(gaps > 0))
+    # the widest node gets the full 0.02; narrow ones keep a quarter of the arc
+    expect_equal(min(max(gaps), 0.02), 0.02)
+
+    # and slots still fit inside their node's arc
+    spans <- (lk$theta1 - lk$theta0) %% (2 * pi)
+    expect_true(all(spans > 0))
+    expect_true(all(spans <= nd$width[match(lk$from, nd$id)] + 1e-9))
+
+    # the seam is clamped so a node with many links still keeps some slot
+    tight <- circos_layout(m, order = "hclust", slot_gap = 10)
+    expect_true(all((layout_links(tight)$theta1 - layout_links(tight)$theta0) >= 0))
+})

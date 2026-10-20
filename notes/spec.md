@@ -243,6 +243,11 @@ structure(
    与原公式逐位相同**。
 
    **加权（`weight =`）时**：`slot_k = p · node_w · |w_k| / Σ_side |w|`，`gap` 不变。
+
+   **绝对缝 `slot_gap`（R21）**：给了数值时，缝不再是 `(1-p)` 的比例，而是**固定弧度**
+   `min(slot_gap, node_w / (4·d_side))`——上限是"节点弧的四分之一留给缝"，
+   保证链接很多的节点仍有可见的 ribbon。槽位吃掉剩余弧：`slot_k = (node_w - d_side·gap) · share_k`。
+   这和 circlize 的 `diffHeight`（固定 2mm）是同一个思路：比例式的缝在窄弧上会消失。
    即每个槽位按自己那条边的权重分配该侧可用弧，空出来的 `(1-p)` 仍是 `d_side` 个等宽缝。
    负权重按绝对值计（与 circlize 相同）；全零权重报 `ggcircos_error_data`。
    `n_links` 列仍是**总度数**（信息列，供用户映射），只是不作为槽位分母。
