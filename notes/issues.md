@@ -180,13 +180,20 @@ spec §7 说"空图合法"。`allocate_slots()` 会对 0 行表写入标量列�
 
 唯一合法的路径是 `"y"`，非法的分支有 `ggcircos_abort`，但没有任何测试覆盖"非法 theta 报 classed error"。
 
-### B11. 连续 `fill` 时 grob 数退化成每行一个
+### B11. 连续 `fill` 时 grob 数退化成每行一个 —— **已修（2026-10-20）**
 
-`draw_panel` 按 `fill/colour/linewidth/linetype/alpha` 逐行分块（`R/geom-chord.R:148-153`）。离散 fill 是 11 个 chunk（好），连续 fill（`aes(fill = r)` 是最常见用法）是 **51 个 pathGrob**——正好是 spec §6.1 要消灭的旧实现问题。修法：连续值分桶（`cut()`，20–30 档）或在文档里写明边界。
+`draw_panel` 按 `fill/colour/linewidth/linetype/alpha` 逐行分块（`R/geom-chord.R`）。离散 fill 是 11 个 chunk（好），连续 fill（`aes(fill = r)` 是最常见用法）是 **51 个 pathGrob**——正好是 spec §6.1 要消灭的旧实现问题。
 
-### B12. `geom_track(text)` 的 `x` 语义没定义
+修法（ponytail）：分块数 > 24 时把 `fill`/`colour` 量化到 16 级 rgb 网格再分块，
+每块用首行的**精确**颜色绘制（误差 ≤ 半格 = 8/255，肉眼不可分）。
+实测：55 条边 51 → 18 个 grob；几何 diff 为 0；离散/无 fill/line 路径不受影响。
+回归测试：`"continuous fill does not explode into one grob per link"`。
 
-无 `x` 时固定在带中心（正确），有 `x` 时文字放在映射后的位置，但没有文档说明"是贴着柱子末端还是带中心"。不会崩，但会让人困惑。
+### B12. `geom_track(text)` 的 `x` 语义没定义 —— **已修（2026-10-20）**
+
+无 `x` 时固定在带中心（正确），有 `x` 时文字放在映射后的位置，但没有文档说明。
+不会崩，但会让人困惑。修法就是文档化：`@param geom` 写明"后三种无 `x` 落在带中心，
+有 `x` 落在缩放后的值上（同柱的外沿）"。
 
 ### B13. `geom_node_text(rotate = )` 整条路径是哑的 —— **已修（2026-10-19）**
 

@@ -28,7 +28,8 @@ geom_track(
 
 \item{geom}{Which track geometry to use: \code{"col"}/\code{"bar"} (anchored at the
 band's inner edge), \code{"area"}, \code{"boxplot"}, \code{"point"}, \code{"tile"} or
-\code{"text"} (all drawn at the band's centre when no value is mapped).}
+\code{"text"}. The last three sit at the band's centre when no \code{x} is mapped;
+with an \code{x} they land at the scaled value, the way a bar's outer edge does.}
 
 \item{node}{Unquoted name of the column holding node ids. Required.}
 

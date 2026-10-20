@@ -10,7 +10,8 @@
 #'   Standard [ggplot2::layer()] arguments.
 #' @param geom Which track geometry to use: `"col"`/`"bar"` (anchored at the
 #'   band's inner edge), `"area"`, `"boxplot"`, `"point"`, `"tile"` or
-#'   `"text"` (all drawn at the band's centre when no value is mapped).
+#'   `"text"`. The last three sit at the band's centre when no `x` is mapped;
+#'   with an `x` they land at the scaled value, the way a bar's outer edge does.
 #' @param node Unquoted name of the column holding node ids. Required.
 #' @param band Either a declared track name (see the `tracks` argument of
 #'   [ggcircos()]) or an explicit `c(r0, r1)` radius interval.

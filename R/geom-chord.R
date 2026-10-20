@@ -143,13 +143,19 @@ GeomChord <- ggproto("GeomChord", Geom,
         pieces <- coord$transform(pieces, panel_params)
 
         # grid gives one gp per path, so rows are batched by style: a discrete
-        # fill collapses to a handful of grobs, a continuous one to one per
-        # link — the same trade-off ggplot2's polygon geoms make
+        # fill collapses to a handful of grobs. A continuous fill would be one
+        # grob per link, so past a threshold the colours are quantised onto an
+        # rgb grid instead (B11) — each chunk then draws with its first row's
+        # exact colour, which is within half a step of every member.
         sty <- data[pieces$.id, , drop = FALSE]
         key <- paste(
             sty$fill, sty$colour, sty$linewidth, sty$linetype, sty$alpha,
             sep = "\r"
         )
+        if (length(unique(key)) > 24L) {
+            key <- paste(style_key(sty$fill), style_key(sty$colour),
+                         sty$linewidth, sty$linetype, sty$alpha, sep = "\r")
+        }
         chunks <- split(seq_len(nrow(pieces)), key)
         grobs <- lapply(chunks, function(i) {
             d <- sty[i[1L], , drop = FALSE]
@@ -189,6 +195,22 @@ GeomChord <- ggproto("GeomChord", Geom,
 #' @keywords internal
 #' @noRd
 ggcircos_pt <- 72.27 / 25.4
+
+#' Quantise a colour vector onto a 16-level rgb grid for style batching
+#'
+#' NA stays NA (col2rgb would silently turn it white).
+#' @keywords internal
+#' @noRd
+style_key <- function(colour) {
+    out <- rep(NA_character_, length(colour))
+    ok <- !is.na(colour) & nzchar(colour)
+    if (any(ok)) {
+        rgb <- grDevices::col2rgb(colour[ok])
+        q <- apply(rgb %/% 16L, 2L, paste, collapse = "_")
+        out[ok] <- q
+    }
+    out
+}
 
 #' Vertex paths for the polar layout, in (radius, angle) space.
 #' @keywords internal

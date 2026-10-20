@@ -247,6 +247,23 @@ test_that("the axis draws lines, not white blobs (B8)", {
     expect_equal(length(unique(round(radii, 6))), length(radii))
 })
 
+test_that("continuous fill does not explode into one grob per link (B11)", {
+    m <- cor(mtcars)
+    grobs_of <- function(p) {
+        g <- ggplot2::ggplotGrob(p)
+        idx <- which(vapply(g$grobs, function(x) !is.null(x$name) && grepl("^panel", x$name), logical(1)))
+        ch <- g$grobs[[idx[1]]]$children
+        k <- which(vapply(ch, function(x) !is.null(x$name) && grepl("chord", x$name), logical(1)))
+        length(ch[[k]]$children)
+    }
+    n_links <- nrow(ggcircos:::layout_links(ggcircos:::circos_layout(m)))
+    expect_gt(n_links, 24L)
+    expect_lt(grobs_of(ggcircos(m, order = "hclust") + geom_chord(aes(fill = r))), 25L)
+    # the cheap paths must stay cheap
+    expect_equal(grobs_of(ggcircos(m) + geom_chord()), 1L)
+    expect_equal(grobs_of(ggcircos(m) + geom_chord(type = "line")), 1L)
+})
+
 test_that("plots roundtrip through rds and facet", {
     nodes <- data.frame(
         id = c("a", "b", "c", "d"),
