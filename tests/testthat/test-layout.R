@@ -301,3 +301,61 @@ test_that("accessors are read-only views of a layout", {
     expect_identical(layout_tracks(lay), lay$tracks)
     expect_output(print(lay), "ggcircos layout")
 })
+test_that("sectors stay contiguous whatever the order says (R1)", {
+    nodes <- data.frame(
+        id = c(paste0("g", 1:4), paste0("h", 1:4)),
+        genome = rep(c("A", "B"), each = 4),
+        stringsAsFactors = FALSE
+    )
+    set.seed(3)
+    links <- data.frame(
+        from = sample(nodes$id, 10, TRUE), to = sample(nodes$id, 10, TRUE),
+        stringsAsFactors = FALSE
+    )
+    links <- links[links$from != links$to, ]
+
+    orders <- list(
+        NULL,
+        "hclust",
+        c("h2", "g3", "h1", "g4", "h3", "g1", "h4", "g2")  # deliberately mixed
+    )
+    for (ord in orders) {
+        lay <- circos_layout(links, nodes = nodes, sectors = "genome", order = ord)
+        nd <- layout_nodes(lay)
+        n <- nrow(nd)
+        # one run per sector: no sector is split into two blocks
+        runs <- 1L + sum(nd$sector[-1] != nd$sector[-n])
+        expect_equal(runs, length(unique(nd$sector)))
+        # arcs and seams add up to exactly one turn
+        p <- layout_params(lay)
+        g <- p$gap_eff * 2 * pi
+        sg <- p$sector_gap_eff * 2 * pi
+        nxt <- c(nd$theta0[-1], nd$theta0[1])
+        gaps <- (nxt - nd$theta1) %% (2 * pi)
+        expect_true(all(abs(gaps - g) < 1e-9 | abs(gaps - (g + sg)) < 1e-9))
+        expect_equal(sum(nd$width) + sum(gaps), 2 * pi)
+    }
+})
+
+test_that("labels sit outside the outermost band and inside the panel (R15)", {
+    m <- cor(mtcars)
+    vals <- data.frame(id = colnames(mtcars), v = seq(0.1, 1, length.out = 11))
+
+    plain <- ggplot2::ggplot_build(
+        ggcircos(m) + geom_node_text()
+    )
+    # a plain chord diagram still leaves the ring room: the labels are not
+    # pinned to the panel edge (they used to sit at exactly the x limit)
+    lim <- plain$layout$panel_params[[1]]$r.range
+    expect_gt(lim[2] - plain$data[[1]]$x[1], 0.05)
+
+    with_track <- ggplot2::ggplot_build(
+        ggcircos(m, tracks = c(v = 0.2)) +
+            geom_node_text() +
+            geom_track(data = vals, ggplot2::aes(x = v), node = id, band = "v")
+    )
+    trk <- layout_tracks(circos_layout(m, tracks = c(v = 0.2)))
+    # outside the outermost band, i.e. not buried under the track
+    expect_true(all(with_track$data[[1]]$x > max(trk$r1)))
+    expect_true(all(with_track$data[[1]]$x < with_track$layout$panel_params[[1]]$r.range[2]))
+})

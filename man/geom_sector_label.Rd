@@ -11,7 +11,7 @@ geom_sector_label(
   stat = "identity",
   position = "identity",
   ...,
-  offset = 0.06,
+  offset = 0.16,
   angle = "horizontal",
   na.rm = FALSE,
   show.legend = NA,

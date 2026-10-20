@@ -308,3 +308,31 @@ test_that("plots roundtrip through rds and facet", {
     expect_s3_class(ggplot2::ggplotGrob(p2 + geom_node_point()), "gtable")
     expect_s3_class(ggplot2::ggplotGrob(ggcircos(links, nodes = nodes) + geom_chord() + ggplot2::facet_wrap(~ grp)), "gtable")
 })
+
+test_that("the linear layout keeps every chord inside the panel (R16)", {
+    nodes <- data.frame(id = paste0("n", 1:6), stringsAsFactors = FALSE)
+    # every link joins two nodes that are half a ring apart, so the shortest
+    # arc wraps the seam for half of them
+    links <- data.frame(
+        from = paste0("n", 1:6),
+        to = paste0("n", c(4, 5, 6, 1, 2, 3)),
+        stringsAsFactors = FALSE
+    )
+    p <- ggcircos(links, nodes = nodes, layout = "arc") + geom_chord(type = "line")
+    b <- ggplot2::ggplot_build(p)
+    pp <- b$layout$panel_params[[1]]
+    paths <- ggcircos:::chord_paths_cartesian(b$data[[1]], "line", NA, 40)
+
+    # the linear y is a plain coordinate: no path may leave the turn
+    expect_true(all(paths$y >= 0))
+    expect_true(all(paths$y <= 2 * pi))
+    # and none may leave the radius range
+    expect_true(all(paths$x >= pp$x.range[1]))
+    expect_true(all(paths$x <= pp$x.range[2]))
+    # each chord starts and ends on the spine, at its own two slots
+    ends <- do.call(rbind, lapply(split(paths, paths$.id), function(q) {
+        data.frame(y0 = q$y[1], y1 = q$y[nrow(q)])
+    }))
+    expect_true(all(abs(ends$y0 - b$data[[1]]$y) < 1e-9))
+    expect_true(all(abs(ends$y1 - b$data[[1]]$yend) < 1e-9))
+})

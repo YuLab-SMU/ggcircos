@@ -293,6 +293,14 @@ circos_layout_build <- function(links,
 
     nd$sector <- circos_assign_sectors(nd, sectors)
     nd <- circos_apply_order(nd, links, order)
+    # A sector is a *contiguous run* of node arcs: the angle budget reserves
+    # exactly S-1 sector seams (spec 4.3-4) and the sector span is taken from
+    # the run's two ends (spec 4.6-5). An ordering that interleaves two
+    # sectors (`order = "hclust"` with `sectors =`, or an explicit vector)
+    # would insert one seam per switch, overflow the turn and overlap arcs --
+    # so the sectors are grouped here and the requested order is honoured
+    # *inside* each one (R1).
+    nd <- circos_group_sectors(nd)
 
     n <- nrow(nd)
     if (n == 0L) {
@@ -489,6 +497,27 @@ circos_assign_sectors <- function(nd, sectors) {
     out <- unname(sectors[nd$id])
     out[is.na(out)] <- "all"
     as.character(factor(out, levels = unique(c(names(sectors), "all"))))
+}
+
+#' @keywords internal
+#' @noRd
+#' Keep each sector's nodes together, preserving the order inside a sector
+#'
+#' The angle budget reserves one seam per *sector*, not per adjacent pair, so
+#' a layout whose nodes interleave two sectors cannot be drawn: it would put
+#' a sector gap at every switch and push the arcs past a full turn. Grouping
+#' is stable, so whatever order the caller asked for still holds within each
+#' sector.
+#' @keywords internal
+#' @noRd
+circos_group_sectors <- function(nd) {
+    if (!"sector" %in% names(nd) || nrow(nd) < 2L) return(nd)
+    key <- match(nd$sector, unique(nd$sector))
+    if (length(unique(key)) < 2L) return(nd)
+    # already grouped: every sector's nodes are one run
+    runs <- sum(c(FALSE, nd$sector[-1] != nd$sector[-nrow(nd)])) + 1L
+    if (runs == length(unique(key))) return(nd)
+    nd[order(key, seq_len(nrow(nd))), , drop = FALSE]
 }
 
 #' @keywords internal

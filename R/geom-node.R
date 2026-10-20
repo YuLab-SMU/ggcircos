@@ -87,7 +87,7 @@ geom_node_text <- function(mapping = NULL,
                            position = "identity",
                            ...,
                            rotate = FALSE,
-                           offset = 0.06,
+                           offset = 0.10,
                            nudge_x = 0,
                            na.rm = FALSE,
                            show.legend = NA,
@@ -167,7 +167,11 @@ geom_node_point <- function(mapping = NULL,
 #' @noRd
 circos_label_angle <- function(coord, panel_params, theta, rotate) {
     screen <- circos_screen_angle(coord, panel_params, theta)
-    left <- cos(screen * pi / 180) < 0
+    # "left half" is where the anchor sits left of centre. The screen angle
+    # is measured from 12 o'clock, so left-of-centre is sin(screen) < 0;
+    # cos() would flip the *bottom* half instead, pushing labels near 9
+    # o'clock on the wrong side of the ring.
+    left <- sin(screen * pi / 180) < 0
     if (rotate) {
         angle <- ifelse(left, screen + 180, screen)
         list(angle = angle, hjust = ifelse(left, 1, 0))
@@ -210,7 +214,7 @@ geom_sector_label <- function(mapping = NULL,
                               stat = "identity",
                               position = "identity",
                               ...,
-                              offset = 0.06,
+                              offset = 0.16,
                               angle = "horizontal",
                               na.rm = FALSE,
                               show.legend = NA,

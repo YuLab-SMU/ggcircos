@@ -10,6 +10,14 @@ reserved for every link — is computed once by \code{\link[=circos_layout]{circ
 as data. Layers then behave like any other ggplot2 layer: they read the
 layout and add their own data, and nothing accumulates on the plot.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://yulab-smu.github.io/ggcircos}
+  \item Report bugs at \url{https://github.com/YuLab-SMU/ggcircos/issues}
+}
+
+}
 \author{
 \strong{Maintainer}: Shuangbin Xu \email{xshuangbin@163.com} (\href{https://orcid.org/0000-0003-3513-5362}{ORCID})
 

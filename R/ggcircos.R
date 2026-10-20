@@ -1,3 +1,7 @@
+# Space reserved outside the outermost band for labels. The sector label
+# carries the largest offset (0.16), so 0.22 leaves a readable margin.
+label_space <- 0.22
+
 #' Start a circular layout
 #'
 #' Creates the plot that every other ggcircos layer attaches to. The layout
@@ -67,7 +71,10 @@ ggcircos <- function(data,
 
     rmax <- radius
     if (nrow(lay$tracks)) rmax <- max(rmax, max(lay$tracks$r1))
-    xmax <- rmax + 0.06
+    # room outside the outermost band for the node and sector labels: without
+    # it the labels are pinned to the panel edge (plain chord) or buried under
+    # the first track (whose inner edge is r = 1 + track_offset)
+    xmax <- rmax + label_space
     # in the linear layout links bulge left of the spine, so the radius axis
     # has to reach into negative values too
     xlim <- if (layout == "arc") c(-1.1, xmax) else c(0, xmax)

@@ -30,7 +30,7 @@ geom_node_text(
   position = "identity",
   ...,
   rotate = FALSE,
-  offset = 0.06,
+  offset = 0.1,
   nudge_x = 0,
   na.rm = FALSE,
   show.legend = NA,

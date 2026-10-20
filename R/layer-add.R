@@ -61,6 +61,13 @@ ggplot_add.ggcircos_node <- function(object, plot, object_name, ...) {
     lay <- require_layout(plot, object_name)
     params <- layer_settings(object)
     offset <- params$offset %||% 0.01
+    # Labels sit outside the *outermost band*, not merely outside the node
+    # ring: with tracks declared, an offset measured from r = 1 lands the
+    # labels exactly under the first band (whose inner edge is 1 + offset).
+    # `geom_node_arc()` draws the ring itself, so it is never pushed.
+    push <- if (inherits(object$geom, "GeomNodeArc")) 0 else
+        max(layout_tracks(lay)$r1, 1) - 1
+    offset <- offset + push
 
     no_data <- is.null(object$data) || is_waive(object$data)
     if (inherits(object$geom, "GeomSectorLabel")) {

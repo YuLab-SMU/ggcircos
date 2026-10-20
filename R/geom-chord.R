@@ -267,8 +267,13 @@ chord_paths_cartesian <- function(data, type, curvature, ncp) {
         for (i in seq_len(nrow(data))) {
             a0 <- data$theta0[i]; a1 <- data$theta1[i]
             b0 <- data$theta_end0[i]; b1 <- data$theta_end1[i]
-            d1 <- ang_diff(a1, b0)
-            d2 <- ang_diff(b1, a0)
+            # the linear layout's y is a plain coordinate, not an angle: a
+            # shortest-arc difference puts the far end a whole turn outside
+            # `[0, 2*pi]` whenever a link crosses the seam, and the path is
+            # then clipped away (R16). Plain differences keep both ends in
+            # the panel for every link.
+            d1 <- b0 - a1
+            d2 <- a0 - b1
             k1 <- bulge_cart(d1, curvature)
             k2 <- bulge_cart(d2, curvature)
             # the foot is the node's own extent on the spine (x = r = 0)
@@ -291,7 +296,8 @@ chord_paths_cartesian <- function(data, type, curvature, ncp) {
     } else {
         for (i in seq_len(nrow(data))) {
             t0 <- data$y[i]; t1 <- data$yend[i]
-            d <- ang_diff(t0, t1)
+            # see above: no shortest-arc wrap in the linear layout
+            d <- t1 - t0
             k <- bulge_cart(d, curvature)
             out[[length(out) + 1L]] <- data.frame(
                 x = bezier_r(0, k, 0, m),
@@ -321,11 +327,11 @@ bulge_radius <- function(d, curvature) {
 #' @keywords internal
 #' @noRd
 bulge_cart <- function(d, curvature) {
-    if (is.na(curvature)) {
-        -(4 / (3 * pi)) * abs(d)
-    } else {
-        -(curvature / 3) * sign(d)
-    }
+    k <- if (is.na(curvature)) -(4 / (3 * pi)) * abs(d) else -(curvature / 3) * sign(d)
+    # shortcut: every chord deeper than a semicircle is drawn at the same
+    # depth, so very long links (|d| > 3*pi/4) coincide on the left edge.
+    # Upgrade by widening the arc layout's x range instead of capping (R16).
+    max(k, -4 / 3)
 }
 
 #' Radius along a cubic bezier whose control radii are both `k`.

@@ -195,6 +195,9 @@ structure(
 1. **归一化输入**：见 §4.4。得到 `nodes`（id 去重、顺序按 `order`）与 `links`（from/to 必须存在，否则报错）。
 2. **排序**：`order = NULL` 保留输入顺序；`"hclust"` 用 `hclust(as.dist(1 - W))` 排序，`W` 是 from×to 的对称权重矩阵（无权重列时用边计数）；字符向量按给定顺序；函数按返回值。
 3. **sector 分组**：sector 顺序 = 首次出现顺序；`sectors` 参数为命名向量时按该向量的名字排序。
+   **扇区必须连续（R1）**：`order`（`"hclust"`、显式向量、函数）只在**扇区内部**生效，排完之后
+   再按扇区首次出现顺序做一次稳定分组。否则 `sectors =` + `order = "hclust"` 会把同扇区节点打散，
+   切换次数超过预算的 `S-1`，弧越界重叠（实测溢出 0.57–1.51 弧度）。
 4. **角度总预算**：`span = 2π - N*G - (S-1)*SG`；要求 `span > 0`，否则
    `ggcircos_error_layout: "gap too large: N*gap + (S-1)*sector_gap >= 1 turn"`。
    **⚠ 决策（B4）**：`gap` 的默认值是自适应的，不是字面常量。默认值按公式
@@ -347,6 +350,11 @@ coord_arc(xlim = c(-1, 1), ylim = NULL, clip = "off")
 - `x` 仍是半径（节点在 `x = 0`），`y` 仍是 θ；弦的鼓包方向 = `x` 负方向。
 - `xlim` 必须给足，否则弦被裁（旧版线性布局的 bug）；默认留出 `[-1, 0]` 的鼓包空间。
 - **⚠ 决策**：`layout = "arc"` 时 `r` 恒为 `0`，节点弧的 `theta0/1` 退化为 `y ± w/2`。
+- **⚠ 线性布局里 `y` 是普通坐标，不是角度（R16）**：弦的 y 跨度必须是**不绕回**的差值
+  （`b0 - a1`、`t1 - t0`），**不能**用"最短弧" `ang_diff()`。用最短弧时，跨过 θ=0 的弦
+  端点会落到 `[0, 2π]` 之外（实测 -2.65 / 8.87），整条弧被裁掉，画面上只剩半截。
+  鼓包深度同时限在 `-4/3`（半圆的深度），否则超过半圈的长弦会冲出 x 范围。
+  回归测试：`test-tracks-and-contract.R` 的 `"the linear layout keeps every chord inside the panel (R16)"`。
 
 ### 5.3 `is_linear()`
 
@@ -380,7 +388,8 @@ CoordCircos$screen_angle <- function(self, panel_params, theta) {
 2. **必须与 `transform()` 共用参数**：`panel_params$arc`、`panel_params$theta.range`、
    `self$reverse` 是同一套来源，屏幕角和点位置不可能不一致。
 3. **标签逻辑（左半圈翻转）**：
-   - `rotate = FALSE`：水平文字，屏幕角余弦 < 0（左半圈）时 `hjust = 1`，否则 `hjust = 0`。
+   - `rotate = FALSE`：水平文字，`sin(屏幕角) < 0`（左半圈）时 `hjust = 1`，否则 `hjust = 0`。
+     屏幕角以 12 点为 0，所以"左"对应 `sin`；用 `cos` 翻的是**下半圈**（R6）。
    - `rotate = TRUE`：旋转角 = 屏幕角；左半圈 + 180°，`hjust = 1`。
 4. **`coord_arc()` 的 `screen_angle()` 恒返回 0**（线性布局不旋转）。
 5. **测试**：对 `clockwise = TRUE/FALSE` × `start ∈ {0, -π/2, π}` 的每一种组合，
@@ -469,7 +478,7 @@ ribbon 的脚之间也应有对应空隙。**回归测试**：对任一 `p ∈ {
 ```r
 geom_node_arc(mapping = NULL, data = NULL, width = 0.04, offset = 0.01,
               linewidth = 0.2, ...)
-geom_node_text(mapping = NULL, data = NULL, rotate = FALSE, offset = 0.02,
+geom_node_text(mapping = NULL, data = NULL, rotate = FALSE, offset = 0.10,
                nudge_x = 0, ...)
 geom_node_point(mapping = NULL, data = NULL, offset = 0.02, ...)
 ```
@@ -478,6 +487,8 @@ geom_node_point(mapping = NULL, data = NULL, offset = 0.02, ...)
 - 默认 mapping：`geom_node_arc` → `aes(x = r + offset, y = theta, fill = "grey30")`；
   `geom_node_text` → `aes(x = r + offset, y = theta, label = label)`；
   `geom_node_point` → `aes(x = r + offset, y = theta)`。
+- **标签落在"最外一圈之带"之外（R15）**：`ggplot_add.ggcircos_node` 把 `max(tracks$r1, 1) - 1`
+  加进 `offset`，声明轨道后节点文字不会被第一条带埋住；`geom_node_arc()` 画的是环本身，不加这个偏移。
 - `geom_node_arc` 画的是**环带扇区**：`xmin = r + offset`、`xmax = r + offset + width`、
   `ymin = theta0`、`ymax = theta1`，用 `GeomRect` 的绘制逻辑（`GeomNodeArc` 只做 mapping 组装）。
 - `rotate = TRUE`：旋转角由 §5.4 的 `screen_angle()` 给出（**不是**从变换后坐标反推），
@@ -505,7 +516,7 @@ geom_node_point(mapping = NULL, data = NULL, offset = 0.02, ...)
 ### 6.3 `geom_sector_label()`
 
 ```r
-geom_sector_label(mapping = NULL, data = NULL, offset = 0.06,
+geom_sector_label(mapping = NULL, data = NULL, offset = 0.16,
                   angle = c("horizontal", "radial"), ...)
 ```
 
@@ -662,7 +673,9 @@ ggcircos(
 3. `+ coord_circos()`（或 `coord_arc()`）+ `theme_circos()`。
 4. `+ scale_y_continuous(limits = c(0, 2*pi), expand = c(0, 0))` +
    `scale_x_continuous(limits = c(0, xmax), expand = c(0, 0))`，
-   其中 `xmax = max(tracks$r1, 1) + 0.05`。
+   其中 `xmax = max(tracks$r1, 1) + 0.22`（常量 `label_space`）：这 0.22 留给**环外标签**。
+   原来的 `+0.05/+0.06` 让节点文字正好压在 x 上限上——无轨道时被顶到画布边缘，
+   有轨道时被第一条带埋掉（R15）。
 5. `attr(plot$data, "circos_layout") <- layout`，**此后 layout 只读**。
 
 **不做的**：不加任何 `geom_*`（连弦也不加）。用户可以只画节点，也可以加三层弦。

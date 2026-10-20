@@ -286,6 +286,58 @@ spec §4.6 写的"两端独立分配"（以及 §4.3-6"入射边按…排序，�
 修法：边属性按原名列进 links（`weight` 仍映射为 `r`）；tbl_graph 端点先过
 `ids[edges[[1]]]` 解析成节点名。回归测试：`"graph inputs keep their edge attributes"`。
 
+### B20. 扇区与 `order` 同用 → 弧重叠、整圈溢出 —— **已修（2026-10-20，审核 R1）**
+
+`sectors =` 声明后，`order`（`"hclust"` 最常见，显式向量也会）把同一扇区的节点打散，
+但预算按 `S-1` 个扇区缝算、`offset` 按**实际切换次数**加缝：
+
+```r
+circos_layout(lk, nodes = nodes, sectors = "genome", order = "hclust")
+# sectors: B,A,A,B,A,B,A,B → 切换 6 次，预算 1 次
+# 4w + 3g + 3sg = 6.849 > 2π = 6.283   → 弧重叠 0.57 弧度
+```
+
+扇区标签随之落到别的扇区节点上（`notes/figures/review-sector-overflow.png`）。
+`order = "hclust"` + `sectors =` 是 README/vignette 都会用的自然组合。
+
+修法：`circos_group_sectors()` 在排序之后按扇区首次出现顺序做一次**稳定**分组——
+`order` 仍只决定扇区**内部**的顺序。回归测试：`test-layout.R` 的
+`"sectors stay contiguous whatever the order says (R1)"`（三种 order × 弧+缝=2π 断言）。
+
+### B21. 标签被顶到画布边缘 / 被第一条带埋住 —— **已修（2026-10-20，审核 R15）**
+
+`ggcircos()` 的 `xmax = max(tracks$r1, 1) + 0.06`，而 `geom_node_text(offset = 0.06)`
+正好把锚点放在 `r + 0.06`：
+
+- 无轨道：`xmax = 1.06`，标签锚点也是 1.06 → 贴在面板边缘，环几乎顶满画布；
+- 有轨道：轨道内沿也是 `1 + track_offset = 1.06` → 标签被第一条带盖住。
+
+修法三件：`label_space = 0.22`（真正的环外留白）、标签锚点改为
+`max(tracks$r1, 1) + offset`（`ggplot_add.ggcircos_node` 加 `push`，`geom_node_arc` 不加）、
+`sector_label` 默认 offset 0.16 以避开节点文字。回归测试：
+`"labels sit outside the outermost band and inside the panel (R15)"`。
+
+顺带修了左半圈判据（审核 R6）：屏幕角以 12 点为 0，`left` 应为 `sin(screen) < 0`；
+原来用 `cos`，翻的是**下半圈**，9 点附近的标签会朝环内对齐。
+
+### B22. 线性（arc）布局的弦被画到面板外，只剩半截 —— **已修（2026-10-20，审核 R16）**
+
+`chord_paths_cartesian()` 与 polar 版共用"最短弧"差值 `ang_diff() = wrap_pi(b - a)`。
+在极坐标里 `y` 是角度，绕回由 `sin/cos` 消化；在**线性**坐标里 `y` 就是画布坐标，
+最短弧一旦跨过 θ=0，端点就落到面板外：
+
+```r
+# n1..n6 六节点，n_i -> n_{i+3}（半圈）
+# 路径 y 实测: -2.65 / 7.82 / 8.87 ...  面板只有 [0, 2π]
+```
+
+于是每条弦只画出半边、在画布上下缘被切掉——`notes/figures` 里那张 arc 快照就是这状态。
+修法：线性版改用**不绕回**的差值（`b0 - a1`、`t1 - t0`），两端天然落在 `[0, 2π)`；
+鼓包深度限在 `-4/3`（半圆深度），超过半圈的长弦不再冲出 x 范围。
+代价（已写进 `shortcut:` 注释）：`|d| > 3π/4` 的长弦深度相同，在左缘重叠成束。
+
+回归测试：`"the linear layout keeps every chord inside the panel (R16)"`。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）
