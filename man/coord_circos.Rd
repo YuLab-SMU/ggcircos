@@ -39,7 +39,11 @@ so that bulging links are not cut off.}
 physical meaning here.}
 
 \item{expand, limits, ...}{Passed on to \code{\link[ggplot2:coord_radial]{ggplot2::coord_radial()}} or
-\code{\link[ggplot2:coord_cartesian]{ggplot2::coord_cartesian()}}.}
+\code{\link[ggplot2:coord_cartesian]{ggplot2::coord_cartesian()}}. A plain numeric \code{limits} is read as the
+\emph{angle} range: \code{coord_circos(limits = c(0, 2 * pi))} says "the angle
+axis is the whole circle", which is what a hand-built plot needs
+(see \code{vignette("from-circlize")} and the layout-as-data section of
+\code{vignette("tracks")}).}
 
 \item{direction}{Rejected on purpose: the \code{coord_polar()} spelling for
 \code{clockwise}. Present in the signature so that old code gets a classed

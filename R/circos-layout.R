@@ -27,7 +27,9 @@
 #'   so they are dropped with a message.
 #' @param tracks Named numeric vector of outer track widths, e.g.
 #'   `c(values = 0.2, heat = 0.1)`. Widths are relative to the unit node ring.
-#' @param track_offset Gap between the node ring, and between tracks.
+#' @param track_offset Gap between the node ring, and between tracks. The
+#'   first track band starts at `1 + track_offset`, so keep it at or above
+#'   the node ring's outer edge (0.05 with the default `geom_node_arc()`).
 #' @param radius Base radius of the node ring. `0` puts the ring on the
 #'   spine of a linear (`coord_arc()`) layout.
 #' @param ... Used by the methods to build the node table from graph objects.
@@ -51,7 +53,7 @@ circos_layout <- function(x,
                           slot_fill = 0.9,
                           self_loops = FALSE,
                           tracks = NULL,
-                          track_offset = 0.02,
+                          track_offset = 0.06,
                           radius = 1,
                           ...) {
     UseMethod("circos_layout")
@@ -221,7 +223,7 @@ circos_layout_build <- function(links,
                                 slot_fill = 0.9,
                                 self_loops = FALSE,
                                 tracks = NULL,
-                                track_offset = 0.02,
+                                track_offset = 0.06,
                                 radius = 1) {
     if (anyNA(gap) || !is.numeric(gap) || length(gap) != 1L || gap <= 0) {
         ggcircos_abort("layout", "{.arg gap} must be a single positive number.")
@@ -670,7 +672,12 @@ circos_track_bands <- function(tracks, track_offset, radius = 1) {
     if (any(tracks < 0)) {
         ggcircos_abort("band", "{.arg tracks} widths must be non-negative.")
     }
-    r0 <- radius + track_offset + c(0, utils::head(tracks, -1) + track_offset)
+    # r0_i = radius + offset + sum_{j<i}(width_j + offset): every band is
+    # preceded by *all* the earlier ones. `head(tracks, -1)` would only add
+    # the immediately previous width, so the third band landed on the second
+    # (B18: two tracks looked fine, three overlapped).
+    steps <- cumsum(tracks + track_offset)
+    r0 <- radius + track_offset + c(0, head(steps, -1))
     data.frame(
         track = names(tracks), width = as.numeric(tracks),
         r0 = r0, r1 = r0 + as.numeric(tracks), stringsAsFactors = FALSE

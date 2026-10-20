@@ -220,9 +220,9 @@ test_that("track bands are declared once and stacked outwards", {
     lay <- circos_layout(cor(mtcars), tracks = c(v = 0.2, h = 0.1))
     tr <- layout_tracks(lay)
     expect_equal(tr$track, c("v", "h"))
-    expect_equal(tr$r0[1], 1.02)
-    expect_equal(tr$r1[1], 1.22)
-    expect_equal(tr$r0[2], 1.24)
+    expect_equal(tr$r0[1], 1.06)
+    expect_equal(tr$r1[1], 1.26)
+    expect_equal(tr$r0[2], 1.32)
     expect_true(all(diff(tr$r0) > 0))
 })
 

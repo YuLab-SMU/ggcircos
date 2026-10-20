@@ -15,7 +15,7 @@ ggcircos(
   slot_fill = 0.9,
   start = 0,
   tracks = NULL,
-  track_offset = 0.02,
+  track_offset = 0.06,
   self_loops = FALSE,
   radius = NULL,
   ...

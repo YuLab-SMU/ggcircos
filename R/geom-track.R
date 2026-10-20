@@ -286,7 +286,7 @@ track_defaults <- function(rect) {
 #'     ggplot2::geom_point(
 #'         data = d,
 #'         ggplot2::aes(x = value, y = y),
-#'         position = position_track(band = c(1.02, 1.22), anchored = TRUE),
+#'         position = position_track(band = c(1.06, 1.26), anchored = TRUE),
 #'         inherit.aes = FALSE
 #'     )
 #' @importFrom ggplot2 ggproto

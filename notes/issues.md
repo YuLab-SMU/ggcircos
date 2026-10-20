@@ -259,6 +259,22 @@ spec §4.6 写的"两端独立分配"（以及 §4.3-6"入射边按…排序，�
 **教训**：参数在两个地方（layout 与 coord）各存一份默认值时，最容易"传了一半"。
 `start` 的屏幕落点现在由 `coord_circos` 的 `arc` 唯一决定，与 layout 的 `start` 同源。
 
+### B18. 三条以上轨道的 band 互相重叠 —— **已修（2026-10-20）**
+
+`circos_track_bands()` 用 `c(0, head(tracks, -1) + track_offset)` 算每条带的起点，
+只加了**上一条**的宽度而不是**累计**宽度。两条轨道恰好正确，三条时第三条直接落在
+第二条上（`tracks = c(gc=.12, depth=.12, gene=.12)` → depth 与 gene 都是 1.24–1.36）。
+
+为什么拖到现在：默认 `track_offset = 0.02` 让第一条带从 1.02 起，**盖住节点环
+（1.01–1.05）**，灰轨道叠灰环谁也看不见谁——D2 demo 渲染出来"轨道是空的"才把这层
+挖出来。修了两处：
+1. `r0 = radius + track_offset + cumsum(width + offset)` 去掉最后一项（正确累计）；
+2. 默认 `track_offset` 0.02 → **0.06**，不变量 `1 + track_offset ≥ 节点环外沿 1.05`
+   写进 spec §4.4 与 `@param track_offset`。
+
+回归测试：`test-demos.R` 的 D2（三条带两两不相交 + 每条落在自己 band 内）。
+3 张快照随之外移（stacked-tracks / track-axis / deprecated-wrappers），已目检 + accept。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

@@ -20,7 +20,7 @@ circos_layout(
   slot_fill = 0.9,
   self_loops = FALSE,
   tracks = NULL,
-  track_offset = 0.02,
+  track_offset = 0.06,
   radius = 1,
   ...
 )
@@ -68,7 +68,9 @@ so they are dropped with a message.}
 \item{tracks}{Named numeric vector of outer track widths, e.g.
 \code{c(values = 0.2, heat = 0.1)}. Widths are relative to the unit node ring.}
 
-\item{track_offset}{Gap between the node ring, and between tracks.}
+\item{track_offset}{Gap between the node ring, and between tracks. The
+first track band starts at \code{1 + track_offset}, so keep it at or above
+the node ring's outer edge (0.05 with the default \code{geom_node_arc()}).}
 
 \item{radius}{Base radius of the node ring. \code{0} puts the ring on the
 spine of a linear (\code{coord_arc()}) layout.}

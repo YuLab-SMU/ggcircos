@@ -53,10 +53,10 @@ test_that("track layers build in their declared bands", {
         geom_track(data = vals, aes(fill = value), node = "id", band = "heat")
     b <- ggplot2::ggplot_build(p)
 
-    expect_equal(min(b$data[[1]]$xmin), 1.02, tolerance = 1e-6)
-    expect_equal(max(b$data[[1]]$xmax), 1.20, tolerance = 1e-6)
-    expect_equal(min(b$data[[2]]$xmin), 1.22, tolerance = 1e-6)
-    expect_equal(max(b$data[[2]]$xmax), 1.28, tolerance = 1e-6)
+    expect_equal(min(b$data[[1]]$xmin), 1.06, tolerance = 1e-6)
+    expect_equal(max(b$data[[1]]$xmax), 1.24, tolerance = 1e-6)
+    expect_equal(min(b$data[[2]]$xmin), 1.30, tolerance = 1e-6)
+    expect_equal(max(b$data[[2]]$xmax), 1.36, tolerance = 1e-6)
 })
 
 test_that("tile tracks split each node arc into one bin per row (B7)", {
@@ -72,8 +72,8 @@ test_that("tile tracks split each node arc into one bin per row (B7)", {
     nd <- ggcircos:::layout_nodes(ggcircos:::circos_layout_of(p))
 
     # the band is filled radially, not collapsed to its centre line
-    expect_equal(min(d$xmin), 1.02, tolerance = 1e-6)
-    expect_equal(max(d$xmax), 1.17, tolerance = 1e-6)
+    expect_equal(min(d$xmin), 1.06, tolerance = 1e-6)
+    expect_equal(max(d$xmax), 1.21, tolerance = 1e-6)
 
     # the bins of one node are contiguous and together cover width * arc
     for (id in nd$id) {

@@ -213,7 +213,7 @@ structure(
    ribbon 的脚只覆盖槽位本身（完整契约见 §4.6）。`from` 与 `to` 两端**独立**分配（各自用自己的边数做分母）。
 7. **自环**：`from == to` 的边在 `self_loops = FALSE` 时丢弃，并 `cli_inform()` 一次（消息里给条数）。
 8. **轨道带**：`tracks = c(values = .2, heat = .1)` →
-   `r0 = 1 + 0.02 + 累计(width) + 累计(0.02)`，`r1 = r0 + width`；`0.02` 为常量 `track_offset`，可在 `ggcircos()` 里覆盖。
+   `r0 = 1 + track_offset + 累计(width) + 累计(track_offset)`，`r1 = r0 + width`；`track_offset` 默认 **0.06**，可在 `ggcircos()` 里覆盖。**不变量**：第一个带必须落在节点环之外——`geom_node_arc()` 默认占 `r ∈ [1.01, 1.05]`，故 `track_offset ≥ 0.05`（旧默认 0.02 让第一轨从 1.02 起，直接盖住节点环；灰色轨道叠灰色环，肉眼看不出来）。
    **⚠ 决策（B2）**：0 条链接（空 `data.frame`）是**合法输入**——节点表仍按 §4.4 建立，
    `links` 为 0 行但列齐全（§4.2 的所有列都在，值为空向量），图可画节点环。
 9. **不变量自检**（失败即包 bug，`ggcircos_error_internal` 而不是裸 `stopifnot`）：
@@ -649,7 +649,7 @@ ggcircos(
   slot_fill = 0.9,
   start     = 0,
   tracks    = NULL,
-  track_offset = 0.02,
+  track_offset = 0.06,
   self_loops = FALSE,
   ...
 )

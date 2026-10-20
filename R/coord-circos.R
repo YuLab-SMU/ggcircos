@@ -28,7 +28,11 @@
 #'   `clockwise`. Present in the signature so that old code gets a classed
 #'   error instead of "unused argument".
 #' @param expand,limits,... Passed on to [ggplot2::coord_radial()] or
-#'   [ggplot2::coord_cartesian()].
+#'   [ggplot2::coord_cartesian()]. A plain numeric `limits` is read as the
+#'   *angle* range: `coord_circos(limits = c(0, 2 * pi))` says "the angle
+#'   axis is the whole circle", which is what a hand-built plot needs
+#'   (see `vignette("from-circlize")` and the layout-as-data section of
+#'   `vignette("tracks")`).
 #'
 #' @return A ggplot2 coordinate.
 #' @family coordinates
@@ -71,6 +75,12 @@ coord_circos <- function(theta = "y",
         c(start, start + 2 * pi)
     } else {
         c(start + 2 * pi, start)
+    }
+    # a plain numeric `limits` means the angle range: the radius axis has no
+    # physical meaning here, and `coord_circos(limits = c(0, 2*pi))` is how
+    # a hand-built plot says "the angle axis is the whole circle"
+    if (is.numeric(limits)) {
+        limits <- list(theta = limits)
     }
     ggproto(NULL, CoordCircos,
         theta = theta,
@@ -133,11 +143,16 @@ CoordCircos <- ggproto("CoordCircos", CoordRadial,
     },
 
     # The scale that y is drawn against spans [0, 2*pi] by construction in
-    # ggcircos(); if a user replaces it, angles stop meaning angles.
+    # ggcircos(); if a user replaces it, angles stop meaning angles. A
+    # little slack is allowed: a hand-built plot whose y scale was trained
+    # on the layout's own angles lands a fraction of a radian inside the
+    # circle, and that is fine.
     setup_panel_params = function(self, scale_x, scale_y, params = list()) {
         pp <- ggplot2::ggproto_parent(CoordRadial, self)$setup_panel_params(scale_x, scale_y, params)
         tr <- pp$theta.range
-        if (!is.null(tr) && (max(tr, na.rm = TRUE) < 2 * pi || min(tr, na.rm = TRUE) > 0)) {
+        tol <- 0.02 * 2 * pi
+        if (!is.null(tr) && (max(tr, na.rm = TRUE) < 2 * pi - tol ||
+                             min(tr, na.rm = TRUE) > tol)) {
             cli::cli_warn(c(
                 "The angle scale no longer spans {.code [0, 2*pi]}: labels and \\
                  slots will sit in the wrong place.",
