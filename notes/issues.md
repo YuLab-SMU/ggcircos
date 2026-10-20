@@ -352,6 +352,41 @@ circos_layout(lk, nodes = nodes, sectors = "genome", order = "hclust")
 方形画布下 panel 会是一条窄柱。已写进 `coord_arc()` 的 `@details`。
 回归测试：`"the linear layout draws arcs at 1:1 units, not stretched loops (R17)"`。
 
+### B23. 同侧槽位索引错位，两条边可能占同一个槽 —— **已修（2026-10-20）**
+
+`ep$k <- sequence(n_slots)[rank(side_order, ties.method = "first")]`，而
+`n_slots <- pmax(tabulate(...), 1L)` 给**没有端点的侧**也留了一个位置。
+`sequence()` 因此比实际端点多出若干元素，`k` 出现缺号与重复：
+
+```r
+# cor(mtcars)，mpg 的 from 侧有 10 条边
+k 落在 1..9 且有重复  ->  两条边共用同一个槽位，另一段弧空着
+```
+
+修法：`k` 改用按侧的行内计数——`before`（累计偏移）直接按行累加，
+`k` 只是同一件事的视图。修完后 `theta0` 精确等于
+`theta0 + gap/2 + (k-1)(slot+gap)`（实测误差 8.9e-16）。
+
+**回归测试**：`"slots inside a node are placed in order and never collide (R18)"`
+（cor(mtcars) + 星形图 + 三角环三种数据，逐侧逐节点断言位置与不重复）。
+7 张快照随之更新——旧基线里存的是错位后的位置。
+
+### B24. 缺少"按权重画"的几何（对比 circlize 暴露） —— **已加（2026-10-20）**
+
+和 `circlize::chordDiagram()` 画同一份 `cor(mtcars)`：circlize 的**节点弧 ∝ Σ|r|**、
+**连边宽 ∝ |r|**；ggcircos 是**每个节点等弧**、**每条边等宽**，值只体现为颜色。
+信息量差一档——左边一眼看出 cyl/disp/mpg 是主成分，右边所有变量平等。
+
+修法：新增 `ggcircos(..., weight = )` / `circos_layout(..., weight = )`：
+
+- `weight = NULL`（默认）：仍是等弧等宽，与 v0.1 逐位相同；
+- `weight = "r"`（矩阵自带该列）：节点弧 ∝ Σ|w|、槽位 ∝ |w|，负值按绝对值；
+- 权重列不存在 / 非数值 / 含 NA / 全零 → `ggcircos_error_data`。
+
+回归测试：`"weight makes the geometry follow the values (R18)"`。
+尚存差异（不影响语义）：标签朝向（circlize 默认切向，我们水平）、
+以及我们的圆盘因为要给图例留位置而略小。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

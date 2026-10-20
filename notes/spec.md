@@ -206,7 +206,8 @@ structure(
    收窄到 `min(sector_gap_user, 0.2 / max(S - 1, 1))`。用户显式传入的 `gap`
    仍然是上界——运行时**不允许**它超过 `1/N`（超过就报错，不静默改写）。
    生效值记在 `layout_params()$gap` 里（不是用户传入值）。
-5. **节点弧**：每个节点宽 `w = span / N`；第 i 个节点
+5. **节点弧**：每个节点宽 `w = span / N`；**带 `weight` 时改为 `w_i = span · Σ|w|_i / ΣΣ|w|`**
+   （节点弧按它承载的权重分配，和 circlize 的 `chordDiagram()` 一致；见 §4.6-2）。第 i 个节点
    `theta0 = start + 已用角度`，`theta1 = theta0 + w`，节点之间加 `G`，sector 切换处再加 `SG`。
    最终把 `theta*` 对 `2π` 取模（`start` 可为任意实数）。
    **⚠ 决策（B3）**：`gap < 0`、`sector_gap < 0`、`gap ≥ 1/N`、`sector_gap ≥ 1/(S-1)`
@@ -237,11 +238,13 @@ structure(
    **两侧各自**把整条节点弧等分——`from` 侧每份 `s_out = node_w / d_out`，
    `to` 侧每份 `s_in = node_w / d_in`。**不是**按总度数 `n_links = d_out + d_in` 分
    （那会浪费弧：一个 3 出 1 入的节点若按 4 分，出边只用 3/4 的弧）。
-   第 `k` 份内**居中**放一个槽位：
-   ```
-   slot_w = p · s_side        # s_side 是该侧的等分宽
-   ```
-   槽位起止是 `theta0 + (k - 1)·s_side + (1 - p)·s_side/2` 与 `+ slot_w`。
+   槽位起止是 `theta0 + gap/2 + (k-1)·(slot_k + gap)` 与 `+ slot_k`，
+   其中 `gap = (1 - p) · node_w / d_side`。**等权时 `slot_k = p · s_side`、`gap = (1-p)·s_side`，
+   与原公式逐位相同**。
+
+   **加权（`weight =`）时**：`slot_k = p · node_w · |w_k| / Σ_side |w|`，`gap` 不变。
+   即每个槽位按自己那条边的权重分配该侧可用弧，空出来的 `(1-p)` 仍是 `d_side` 个等宽缝。
+   负权重按绝对值计（与 circlize 相同）；全零权重报 `ggcircos_error_data`。
    `n_links` 列仍是**总度数**（信息列，供用户映射），只是不作为槽位分母。
 3. **ribbon 的脚 = 槽位本身**。`GeomChord` 画 ribbon 时，环脚的角范围是
    `[theta0, theta1]`（`from` 端）与 `[theta_end0, theta_end1]`（`to` 端），

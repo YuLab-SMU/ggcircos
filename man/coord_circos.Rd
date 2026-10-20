@@ -67,6 +67,13 @@ taken from \code{y}, and \code{coord_circos()} maps its own arguments onto the
 fields \code{CoordRadial} expects. Labels are rotated with the screen angle
 the coordinate itself reports, so they stay attached to the circle for
 any \code{clockwise} setting.
+
+\code{coord_arc()} locks the radius unit to the angle unit
+(\code{ratio = 1}), because the linear layout has no circle to borrow a scale
+from: without it a chord spanning half a turn is drawn as a tall loop
+instead of an arc. The angle axis covers a whole turn, so this layout
+wants a \strong{tall} device (roughly 1:2 or narrower); in a square device
+the panel becomes a narrow column.
 }
 \examples{
 # normally installed for you by ggcircos()

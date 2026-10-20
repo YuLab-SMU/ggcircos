@@ -30,6 +30,12 @@
 #' @param track_offset Gap between the node ring, and between tracks. The
 #'   first track band starts at `1 + track_offset`, so keep it at or above
 #'   the node ring's outer edge (0.05 with the default `geom_node_arc()`).
+#' @param weight Name of the column holding each link's weight, e.g.
+#'   `weight = "r"`. When set, the geometry follows the values: a node's arc
+#'   is proportional to the weight it carries and a slot is proportional to
+#'   its link's weight (negative values count by magnitude). `NULL`, the
+#'   default, gives every node an equal arc and every link an equal share of
+#'   it -- the value then only shows through `aes(fill = )`.
 #' @param radius Base radius of the node ring. `0` puts the ring on the
 #'   spine of a linear (`coord_arc()`) layout.
 #' @param ... Used by the methods to build the node table from graph objects.
@@ -55,6 +61,7 @@ circos_layout <- function(x,
                           tracks = NULL,
                           track_offset = 0.06,
                           radius = 1,
+                          weight = NULL,
                           ...) {
     UseMethod("circos_layout")
 }
@@ -234,7 +241,8 @@ circos_layout_build <- function(links,
                                 self_loops = FALSE,
                                 tracks = NULL,
                                 track_offset = 0.06,
-                                radius = 1) {
+                                radius = 1,
+                                weight = NULL) {
     if (anyNA(gap) || !is.numeric(gap) || length(gap) != 1L || gap <= 0) {
         ggcircos_abort("layout", "{.arg gap} must be a single positive number.")
     }
@@ -334,7 +342,31 @@ circos_layout_build <- function(links,
             n = n, k = n_sectors - 1L
         )
     }
-    w <- span / n
+    # Link weights make the geometry carry the values, the way circlize's
+    # chordDiagram does: a node's arc is proportional to the weight it
+    # carries and a slot is proportional to its link's weight. With
+    # `weight = NULL` every node weighs the same, so the arcs stay equal and
+    # the slots stay equal -- the previous behaviour, unchanged.
+    links$.circos_w <- resolve_link_weights(links, weight)
+    nw <- if (is.null(weight)) {
+        rep(1, n)
+    } else {
+        # a link's weight counts at both of its ends, the way a matrix row
+        # sum counts a cell once from each side
+        nw <- numeric(n)
+        acc <- rowsum(rep(links$.circos_w, 2L),
+                      match(c(links$from, links$to), nd$id), reorder = TRUE)
+        nw[as.integer(rownames(acc))] <- acc[, 1L]
+        nw
+    }
+    if (sum(nw) <= 0) {
+        ggcircos_abort(
+            "data",
+            c("The weights are all zero, so there is nothing to draw.",
+              i = "Check the {.field {weight}} column, or leave {.arg weight} unset.")
+        )
+    }
+    w <- span * nw / sum(nw)
     switch_sector <- c(FALSE, nd$sector[-1] != nd$sector[-n])
     if (n > 1L) {
         after <- c(rep(g, n - 1L), 0) + ifelse(switch_sector, sg, 0)
@@ -358,7 +390,7 @@ circos_layout_build <- function(links,
     )
 
     tracks_df <- circos_track_bands(tracks, track_offset, radius)
-    check_layout_invariants(nd, links, w, g, sg)
+    check_layout_invariants(nd, links, g, sg)
     links$slot_span <- NULL
 
     nd_out <- nd[, c(
@@ -631,6 +663,35 @@ wrap_pi_arc <- function(a, b) {
 #' @param nodes Node table with `id`, `theta0`, `width`, `order`.
 #' @param slot_fill Fraction of each even share that is actually used.
 #' @return `links` with slot and coordinate columns added.
+#' Turn the `weight` argument into a validated numeric weight per link
+#'
+#' Widths only make sense for non-negative numbers, so the absolute value is
+#' used (a correlation of -0.8 carries as much link as +0.8, which is what
+#' circlize does too).
+#' @keywords internal
+#' @noRd
+resolve_link_weights <- function(links, weight) {
+    if (is.null(weight)) return(rep(1, nrow(links)))
+    if (!is.character(weight) || length(weight) != 1L) {
+        ggcircos_abort("data", "{.arg weight} must be one column name, e.g. {.code weight = \"r\"}.")
+    }
+    if (!weight %in% names(links)) {
+        ggcircos_abort(
+            "data",
+            c("{.arg weight} refers to {.field {weight}}, which the links do not have.",
+              i = "Available: {.val {setdiff(names(links), \".circos_w\")}}.")
+        )
+    }
+    v <- links[[weight]]
+    if (!is.numeric(v)) {
+        ggcircos_abort("data", "{.field {weight}} must be numeric, not {.cls {class(v)}}.")
+    }
+    if (anyNA(v) || any(!is.finite(v))) {
+        ggcircos_abort("data", "{.field {weight}} has missing or non-finite values.")
+    }
+    abs(as.numeric(v))
+}
+
 #' @keywords internal
 #' @noRd
 allocate_slots <- function(links, nodes, slot_fill = 0.9) {
@@ -669,13 +730,25 @@ allocate_slots <- function(links, nodes, slot_fill = 0.9) {
     side_order <- ep$node_order + ifelse(ep$side == "to", n, 0L)
     n_slots <- pmax(tabulate(side_order, nbins = 2L * n), 1L)
     ep$k <- sequence(n_slots)[rank(side_order, ties.method = "first")]
-    slot_w <- nodes$width[ep$node_order] / n_slots[side_order]
-    centre <- nodes$theta0[ep$node_order] + slot_w * (ep$k - 0.5)
-    half <- slot_fill * slot_w / 2
 
-    ep$s0 <- wrap_2pi(centre - half)
-    ep$s1 <- wrap_2pi(centre + half)
-    ep$mid <- wrap_2pi(centre)
+    # A slot takes `slot_fill` of its share of the side, and its share is its
+    # link's weight over the side's total; the free `1 - slot_fill` becomes
+    # k equal gaps (the first and last halved). With equal weights this is
+    # bit-identical to `theta0 + s*(k-0.5) +/- p*s/2`, which is what the
+    # unweighted layout used before.
+    ep$w <- links$.circos_w[ep$row]
+    side_total <- stats::ave(ep$w, side_order, FUN = sum)
+    share <- ifelse(side_total > 0, ep$w / side_total, 1 / n_slots[side_order])
+    node_w <- nodes$width[ep$node_order]
+    ep$slot_w <- node_w * slot_fill * share
+    gap <- node_w * (1 - slot_fill) / n_slots[side_order]
+    before <- stats::ave(ep$slot_w + gap, side_order,
+                         FUN = function(v) c(0, cumsum(v)[-length(v)]))
+    start <- nodes$theta0[ep$node_order] + gap / 2 + before
+
+    ep$s0 <- wrap_2pi(start)
+    ep$s1 <- wrap_2pi(start + ep$slot_w)
+    ep$mid <- wrap_2pi(start + ep$slot_w / 2)
 
     from_tab <- ep[ep$side == "from", , drop = FALSE][order(ep$row[ep$side == "from"]), ]
     to_tab <- ep[ep$side == "to", , drop = FALSE][order(ep$row[ep$side == "to"]), ]
@@ -725,14 +798,23 @@ circos_track_bands <- function(tracks, track_offset, radius = 1) {
 
 #' @keywords internal
 #' @noRd
-check_layout_invariants <- function(nd, links, w, g, sg) {
+check_layout_invariants <- function(nd, links, g, sg) {
     in_turn <- function(v) all(v >= 0 & v < 2 * pi)
-    stopifnot(
-        in_turn(nd$theta), in_turn(nd$theta0), in_turn(nd$theta1),
-        all(abs(nd$width - w) < 1e-9),
-        abs(nrow(nd) * (w + g) +
-                (length(unique(nd$sector)) - 1) * sg - 2 * pi) < 1e-9
-    )
+    # The arcs plus the *actual* seams must close the turn. The old check
+    # recomputed the budget formula from the numbers that produced it, so it
+    # was a tautology and could not catch an overflow (review R7).
+    nxt <- c(nd$theta0[-1], nd$theta0[1])
+    gaps <- wrap_2pi(nxt - nd$theta1)
+    seam_ok <- all(abs(gaps - g) < 1e-9 | abs(gaps - (g + sg)) < 1e-9)
+    closes <- abs(sum(nd$width) + sum(gaps) - 2 * pi) < 1e-9
+    if (!(in_turn(nd$theta) && in_turn(nd$theta0) && in_turn(nd$theta1) &&
+          seam_ok && closes)) {
+        ggcircos_abort(
+            "internal",
+            c("The layout broke an invariant: the arcs and seams do not close a turn.",
+              i = "This is a ggcircos bug; please report it with the data that triggered it.")
+        )
+    }
     if (nrow(links) > 0L) {
         arc <- (links$theta1 - links$theta0) %% (2 * pi)
         stopifnot(

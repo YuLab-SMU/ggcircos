@@ -119,6 +119,41 @@ drawing (so a 500-link diagram is a few dozen grobs, not 500). Each batch
 draws with one exact colour, at most 8/255 off any member. Visually
 indistinguishable; bit-for-bit not identical.
 
+## Letting the values drive the geometry
+
+By default every node gets the same arc and every link the same share of it:
+the layout only knows which nodes are connected, and the value shows up as
+colour. That is the right picture when a link is a *relationship* and all
+relationships count the same.
+
+`circlize::chordDiagram()` does the opposite: a node's arc is proportional to
+the weight it carries, and a link's width is proportional to its own value.
+`weight =` switches ggcircos to that behaviour:
+
+```{r weight, fig.width = 5.5, fig.height = 5.5, fig.cap = "weight = r: node arcs and link widths now follow the correlations, as chordDiagram() does."}
+ggcircos(cor(mtcars), order = "hclust", weight = r) +
+  geom_chord(aes(fill = r)) +
+  scale_fill_gradient2(low = "steelblue", mid = "grey95", high = "firebrick",
+                       midpoint = 0, name = "r") +
+  geom_node_arc() +
+  geom_node_text()
+```
+
+Read the difference off the ring: without `weight` every variable owns
+`2*pi/11` of the circle; with it `cyl`, `disp` and `mpg` are wide and `am`,
+`qsec` are thin, because that is how much correlation they carry. Negative
+values count by magnitude, so a strong negative correlation is a wide link
+too.
+
+```{r weight-check}
+nd <- layout_nodes(circos_layout(cor(mtcars), order = "hclust", weight = "r"))
+round(setNames(nd$width / sum(nd$width), nd$id), 3)
+```
+
+`weight` names a column of the link table. A matrix supplies `r`; for a link
+data frame pass whichever column holds the value, e.g.
+`weight = "pident"` (or unquoted, `weight = pident`).
+
 ## Ribbons or curves
 
 ```{r line, fig.width = 5.5, fig.height = 5.5, fig.cap = "type = \"line\": the same slots, drawn as curves."}

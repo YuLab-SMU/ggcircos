@@ -17,6 +17,10 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   radial band; `geom_track_axis()` — a readable ruler on a band.
 * `sectors =` groups nodes into sectors with a wider gap; `geom_sector_label()`
   labels them.
+* `weight =` makes the geometry follow the values, the way `circlize::chordDiagram()`
+  does: node arcs proportional to the weight they carry and slots proportional to
+  their link's weight (`weight = r` on a matrix). Left unset, every node keeps an
+  equal arc and every link an equal share, as before.
 * `layout_nodes()`, `layout_links()`, `layout_sectors()`, `layout_tracks()`,
   `layout_params()` export the layout as plain data frames.
 * `facet_wrap()` splits chords per panel while the node ring is shared.

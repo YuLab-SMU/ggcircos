@@ -22,6 +22,7 @@ circos_layout(
   tracks = NULL,
   track_offset = 0.06,
   radius = 1,
+  weight = NULL,
   ...
 )
 
@@ -74,6 +75,13 @@ the node ring's outer edge (0.05 with the default \code{geom_node_arc()}).}
 
 \item{radius}{Base radius of the node ring. \code{0} puts the ring on the
 spine of a linear (\code{coord_arc()}) layout.}
+
+\item{weight}{Name of the column holding each link's weight, e.g.
+\code{weight = "r"}. When set, the geometry follows the values: a node's arc
+is proportional to the weight it carries and a slot is proportional to
+its link's weight (negative values count by magnitude). \code{NULL}, the
+default, gives every node an equal arc and every link an equal share of
+it -- the value then only shows through \code{aes(fill = )}.}
 
 \item{...}{Used by the methods to build the node table from graph objects.}
 }

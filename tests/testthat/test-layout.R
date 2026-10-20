@@ -359,3 +359,82 @@ test_that("labels sit outside the outermost band and inside the panel (R15)", {
     expect_true(all(with_track$data[[1]]$x > max(trk$r1)))
     expect_true(all(with_track$data[[1]]$x < with_track$layout$panel_params[[1]]$r.range[2]))
 })
+
+test_that("slots inside a node are placed in order and never collide (R18)", {
+    # a star graph gives one node an empty `to` side -- exactly the shape that
+    # used to shift the per-side slot index
+    star <- data.frame(from = rep("hub", 5), to = paste0("leaf", 1:5),
+                       stringsAsFactors = FALSE)
+    cases <- list(
+        cor(mtcars),
+        star,
+        data.frame(from = c("a", "b", "c"), to = c("b", "c", "a"),
+                   stringsAsFactors = FALSE)
+    )
+    for (dat in cases) {
+        lay <- circos_layout(dat)
+        nd <- layout_nodes(lay)
+        lk <- layout_links(lay)
+        p <- layout_params(lay)$slot_fill
+        for (side in c("from", "to")) {
+            ids <- lk[[side]]
+            st <- if (side == "from") lk$theta0 else lk$theta_end0
+            for (id in unique(ids)) {
+                i <- which(ids == id)
+                w <- nd$width[nd$id == id]
+                k <- length(i)
+                s <- p * w / k
+                gap <- (1 - p) * w / k
+                # order the slots the way they sit on the arc
+                i <- i[order((st[i] - nd$theta0[nd$id == id]) %% (2 * pi))]
+                expect_equal(length(unique(round(st[i], 9))), k)
+                expect_equal(
+                    st[i],
+                    nd$theta0[nd$id == id] + gap / 2 + (seq_len(k) - 1) * (s + gap),
+                    tolerance = 1e-9
+                )
+            }
+        }
+    }
+})
+
+test_that("weight makes the geometry follow the values (R18)", {
+    m <- cor(mtcars)
+    flat <- circos_layout(m, order = "hclust")
+    wtd <- circos_layout(m, order = "hclust", weight = "r")
+
+    # unweighted: every node and every slot of the same side has one width
+    expect_equal(length(unique(round(flat$nodes$width, 12))), 1L)
+
+    # weighted: a node's arc is proportional to the weight it carries
+    # the layout reads the upper triangle, so the diagonal is not a link
+    nw <- colSums(abs(m)) - abs(diag(m))
+    share <- nw / sum(nw)
+    expect_equal(wtd$nodes$width / sum(wtd$nodes$width),
+                 unname(share[wtd$nodes$id]), tolerance = 1e-9)
+
+    # and a link's slot is proportional to its own weight
+    lk <- wtd$links
+    for (id in c("mpg", "cyl")) {
+        i <- which(lk$from == id)
+        v <- abs(m[cbind(lk$from[i], lk$to[i])])
+        span <- (lk$theta1[i] - lk$theta0[i]) %% (2 * pi)
+        expect_equal(span / sum(span), v / sum(v), tolerance = 1e-9)
+    }
+
+    # negative weights count by magnitude, like circlize
+    expect_equal(
+        circos_layout(m, order = "hclust", weight = "r")$links$theta0,
+        circos_layout(m, order = "hclust", weight = "r")$links$theta0
+    )
+    m2 <- m
+    m2[1, 2] <- -abs(m2[1, 2])
+    expect_silent(circos_layout(m2, weight = "r"))
+
+    # errors are classed and name the culprit
+    expect_error(circos_layout(m, weight = "nope"), class = "ggcircos_error_data")
+    bad <- data.frame(from = "a", to = "b", w = NA_real_)
+    expect_error(circos_layout(bad, weight = "w"), class = "ggcircos_error_data")
+    zero <- data.frame(from = "a", to = "b", w = 0)
+    expect_error(circos_layout(zero, weight = "w"), class = "ggcircos_error_data")
+})

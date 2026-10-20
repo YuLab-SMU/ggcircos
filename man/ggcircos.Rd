@@ -18,6 +18,7 @@ ggcircos(
   track_offset = 0.06,
   self_loops = FALSE,
   radius = NULL,
+  weight = NULL,
   ...
 )
 }
@@ -32,6 +33,13 @@ one, where links bulge to the left of a vertical spine.}
 
 \item{radius}{Base radius of the node ring. \code{ggcircos()} derives this from
 \code{layout}; you rarely need to set it.}
+
+\item{weight}{Name of the column holding each link's weight, e.g.
+\code{weight = r} or \code{weight = "r"} (a matrix supplies \code{r}). Set it to make
+the layout carry the values the way \code{\link[circlize:chordDiagram]{circlize::chordDiagram()}} does:
+node arcs proportional to the weight they carry, slots proportional to
+their link's weight. Left \code{NULL} every node keeps an equal arc and the
+values only drive \code{aes(fill = )}.}
 
 \item{...}{Passed on to \code{\link[=circos_layout]{circos_layout()}}.}
 }

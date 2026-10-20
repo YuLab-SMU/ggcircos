@@ -16,6 +16,12 @@ label_space <- 0.22
 #'   Passed to [circos_layout()], which documents each of them.
 #' @param layout `"circular"` for the polar layout, `"arc"` for the linear
 #'   one, where links bulge to the left of a vertical spine.
+#' @param weight Name of the column holding each link's weight, e.g.
+#'   `weight = r` or `weight = "r"` (a matrix supplies `r`). Set it to make
+#'   the layout carry the values the way [circlize::chordDiagram()] does:
+#'   node arcs proportional to the weight they carry, slots proportional to
+#'   their link's weight. Left `NULL` every node keeps an equal arc and the
+#'   values only drive `aes(fill = )`.
 #' @param radius Base radius of the node ring. `ggcircos()` derives this from
 #'   `layout`; you rarely need to set it.
 #' @param ... Passed on to [circos_layout()].
@@ -57,16 +63,24 @@ ggcircos <- function(data,
                      track_offset = 0.06,
                      self_loops = FALSE,
                      radius = NULL,
+                     weight = NULL,
                      ...) {
     layout <- match.arg(layout)
     radius <- radius %||% if (layout == "arc") 0 else 1
 
+    # `weight = r` and `weight = "r"` both name a column of the link table;
+    # the layout resolves it once and the geometry follows the values
+    weight_col <- if (rlang::quo_is_null(rlang::enquo(weight))) {
+        NULL
+    } else {
+        column_or_string(rlang::enquo(weight), "weight")
+    }
     lay <- circos_layout(
         data,
         nodes = nodes, sectors = sectors, order = order, gap = gap,
         sector_gap = sector_gap, slot_fill = slot_fill, start = start,
         tracks = tracks, track_offset = track_offset,
-        self_loops = self_loops, radius = radius, ...
+        self_loops = self_loops, radius = radius, weight = weight_col, ...
     )
 
     rmax <- radius
