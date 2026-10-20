@@ -192,15 +192,18 @@ GeomTrackAxis <- ggproto("GeomTrackAxis", Geom,
             grid::nullGrob()
         }
         text_grob <- if (nrow(texts) > 0) {
-            # tangential: circos_label_angle already returns the tangent
-            # direction (the same one the node labels follow), with the
-            # left-half flip that keeps text upright. Each label sits at its
-            # own break radius, so the radius carries the value and the
-            # labels cannot collide.
-            ang <- circos_label_angle(coord, panel_params, texts$y, TRUE)
-            texts$angle <- ang$angle
+            # Axis labels read *along* the ring (the direction the ruler
+            # runs), which is the opposite of `rotate = TRUE` for node
+            # labels: those follow the ring's tangent, these sit on it. The
+            # radial direction is the perpendicular, so fold it back by 90
+            # and keep the left-half flip that stops the text from hanging
+            # upside down.
+            radial <- circos_screen_angle(coord, panel_params, texts$y)
+            a <- (radial - 90) %% 360
+            a <- ifelse(a > 90 & a < 270, a + 180, a)
+            texts$angle <- a
             texts$hjust <- 0.5
-            texts$vjust <- -0.3
+            texts$vjust <- 0.5
             texts$size <- text.size
             ggplot2::GeomText$draw_panel(texts, panel_params, coord)
         } else {

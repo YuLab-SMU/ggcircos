@@ -183,6 +183,14 @@ CoordCircos <- ggproto("CoordCircos", CoordRadial,
     # when the angle scale is replaced, when `expand` is non-zero, or when
     # the panel is not square; the panel parameters are what the transform
     # itself uses, so they cannot disagree with it.
+    # The *radial* angle of a theta: the direction from the centre outward,
+    # in degrees, 12 o'clock = 0, positive clockwise. That is the angle a
+    # label outside the ring reads along, and it is the quantity
+    # `transform()` itself puts a point at, so the two cannot disagree.
+    #
+    # A point at radius r sits at (r*sin(a) + .5, r*cos(a) + .5) with `a`
+    # this radial angle, which is why the answer is the arc position and not
+    # a tangent: a label is drawn radially, never along the circumference.
     screen_angle = function(self, panel_params, theta) {
         arcframe <- panel_params$arc %||% self$arc %||% c(-pi / 2, 3 * pi / 2)
         tr <- panel_params$theta.range
@@ -190,7 +198,11 @@ CoordCircos <- ggproto("CoordCircos", CoordRadial,
             return(rep(0, length(theta)))
         }
         u <- (theta - tr[1]) / diff(tr)
-        if (identical(self$reverse, "theta")) u <- 1 - u
+        # `arc` already carries the direction: a counter-clockwise circle is
+        # arc = c(start + 2*pi, start), i.e. a *decreasing* span. Flipping `u`
+        # again for `reverse == "theta"` cancelled that out and made a
+        # reversed circle report the same angles as a forward one -- rotated
+        # labels came out mirrored (review R2).
         rad <- arcframe[1] + u * diff(arcframe)
         (rad * 180 / pi) %% 360
     },

@@ -371,7 +371,10 @@ coord_arc(xlim = c(-1, 1), ylim = NULL, clip = "off")
 
 ### 5.4 屏幕角契约（A2）⚠ 决策
 
-**屏幕角 = 标签在画布上的旋转角**（度）。它是 `geom_node_text()`、`geom_sector_label()`
+**屏幕角 = 点从圆心指向外的方向**（度，12 点为 0、顺时针为正）。**不是切线**——
+标签（和轴刻度）沿径向读，文字基线再相对它转 90°（见下）。
+
+**屏幕角 = 标签在画布上的旋转角**（度，转换前）。它是 `geom_node_text()`、`geom_sector_label()`
 与 `GeomTrackAxis` 的共同输入，**只有一个来源**。
 
 **唯一来源：坐标对象导出的 `screen_angle()` 方法。**
@@ -401,6 +404,10 @@ CoordCircos$screen_angle <- function(self, panel_params, theta) {
      屏幕角以 12 点为 0，所以"左"对应 `sin`；用 `cos` 翻的是**下半圈**（R6）。
    - `rotate = TRUE`：旋转角 = 屏幕角；左半圈 + 180°，`hjust = 1`。
 4. **`coord_arc()` 的 `screen_angle()` 恒返回 0**（线性布局不旋转）。
+   ⚠ 实现里不要为 `reverse == "theta"` 再翻一次 `u`：`arc` 本身已经是递减的
+   `c(start + 2π, start)`，再翻一次正好抵消，逆时针圈会报出和顺时针一样的角度（R2）。
+   **文字旋转角 = 径向角 − 90°**，再折叠到 (−90, 90] 以免倒立；节点标签与 `geom_track_axis()`
+   共用这条规则（轴刻度原本直接把径向角当 `rot`，文字于是竖成一列）。
 5. **测试**：对 `clockwise = TRUE/FALSE` × `start ∈ {0, -π/2, π}` 的每一种组合，
    屏幕角与"把 (r, θ) 和 (r+ε, θ) 两点 `transform()` 后的连线方向"一致（容差 `1e-6`）。
 6. `circos_screen_angle()` 这个内部函数**删除**，不要留兼容包装。

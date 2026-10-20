@@ -425,6 +425,26 @@ w(0)=2.41  w(中)=0.29  w(1)=2.00   # 中段收成 1/8
 `"both edges of a ribbon are the same curve entered from opposite ends (R20)"`。
 7 张快照重播（形状确实变了）。
 
+### B27. 旋转标签镜像 / 轴刻度竖成一列 —— **已修（2026-10-20，审核 R2）**
+
+两层原因：
+
+1. `screen_angle()` 里对 `reverse == "theta"` **又翻了一次 `u`**，而 `panel_params$arc`
+   已经是递减的 `c(4.712, -1.571)`。两次反转互相抵消，逆时针圈报出和顺时针一样的角度
+   ——`rotate = TRUE` 的标签于是镜像。
+2. 返回的是**径向角**（点从圆心指向外的方向），但代码把它**直接当 `rot` 用**。
+   grid 的文字角度从 +x 起逆时针，径向角从 12 点起顺时针，两者差 90°：
+   文字因此横跨弧线（节点标签）或竖成一列（轴刻度）。
+
+修法：`screen_angle()` 明确返回径向角、只做一次方向映射；
+**文字旋转角 = 径向角 − 90°**，再折到 (−90, 90] 防倒立。节点标签与 `geom_track_axis()`
+共用这条规则。
+
+回归测试（spec §5.4-5 要求、一直没写的那条）：
+`"screen_angle is the radial direction of the point"`——对 `clockwise × start` 的每种组合，
+断言 `screen_angle()` 与 `transform()` 出来的径向方向逐点一致（容差 1e-6）；
+外加 `"rotated labels run along the ring, upright on both halves"`。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

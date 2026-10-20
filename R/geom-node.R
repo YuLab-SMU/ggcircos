@@ -166,17 +166,22 @@ geom_node_point <- function(mapping = NULL,
 #' @keywords internal
 #' @noRd
 circos_label_angle <- function(coord, panel_params, theta, rotate) {
-    screen <- circos_screen_angle(coord, panel_params, theta)
-    # "left half" is where the anchor sits left of centre. The screen angle
-    # is measured from 12 o'clock, so left-of-centre is sin(screen) < 0;
-    # cos() would flip the *bottom* half instead, pushing labels near 9
-    # o'clock on the wrong side of the ring.
-    left <- sin(screen * pi / 180) < 0
+    radial <- circos_screen_angle(coord, panel_params, theta)
+    # "left half" is where the anchor sits left of centre. The radial angle
+    # is measured from 12 o'clock, so left-of-centre is sin() < 0; cos()
+    # would flip the *bottom* half instead.
+    left <- sin(radial * pi / 180) < 0
     if (rotate) {
-        angle <- ifelse(left, screen + 180, screen)
+        # `screen_angle()` is the direction from the centre outward; a text
+        # baseline runs *along* the ring, i.e. perpendicular to it. grid's
+        # angle is counter-clockwise from +x while the radial angle is
+        # clockwise from 12 o'clock, and the two conventions differ by 90:
+        # rotating by the radial angle alone laid the text across the arc.
+        angle <- (radial - 90) %% 360
+        angle <- ifelse(angle > 90 & angle < 270, angle + 180, angle)
         list(angle = angle, hjust = ifelse(left, 1, 0))
     } else {
-        list(angle = rep(0, length(screen)), hjust = ifelse(left, 1, 0))
+        list(angle = rep(0, length(radial)), hjust = ifelse(left, 1, 0))
     }
 }
 

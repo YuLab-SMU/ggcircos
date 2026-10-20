@@ -149,3 +149,53 @@ test_that("coord_circos() accepts a numeric limits as the angle range", {
         class = "ggcircos_warning_scale"
     )
 })
+
+test_that("screen_angle is the radial direction of the point (spec 5.4-5)", {
+    # The one contract that was never written as a test: for every
+    # direction x start combination, the angle the coordinate reports must be
+    # the direction from the centre outward that `transform()` actually puts
+    # the point at. A tangent-based or atan2-derived angle fails this
+    # (review R2).
+    m <- cor(mtcars)[1:5, 1:5]
+    starts <- c(0, -pi / 2, pi, 1.2)
+    for (clockwise in c(TRUE, FALSE)) {
+        for (st in starts) {
+            p <- ggcircos(m, start = st) + geom_chord() +
+                coord_circos(clockwise = clockwise, start = st)
+            b <- suppressMessages(ggplot2::ggplot_build(p))
+            pp <- b$layout$panel_params[[1]]
+            cd <- b$layout$coord
+            th <- seq(0.15, 2 * pi - 0.15, length.out = 12)
+            xy <- cd$transform(data.frame(x = 0.9, y = th), pp)
+            radial <- (atan2(xy$x - 0.5, xy$y - 0.5) * 180 / pi) %% 360
+            got <- cd$screen_angle(pp, th)
+            expect_equal(
+                as.numeric((got - radial + 180) %% 360 - 180),
+                rep(0, length(th)),
+                tolerance = 1e-6,
+                info = sprintf("clockwise = %s, start = %.2f", clockwise, st)
+            )
+        }
+    }
+})
+
+test_that("rotated labels run along the ring, upright on both halves", {
+    # text baseline is perpendicular to the radial direction; without the
+    # -90 the labels lay across the arc (review R2)
+    m <- cor(mtcars)
+    g <- ggplot2::ggplotGrob(
+        ggcircos(m) + geom_node_text(rotate = TRUE)
+    )
+    i <- which(vapply(g$grobs, function(z) !is.null(z$name) && grepl("^panel", z$name), TRUE))[1]
+    kids <- g$grobs[[i]]$children
+    txt <- Filter(function(z) inherits(z, "text"), kids)[[1]]
+
+    # every drawn angle must be in (-90, 90] after folding, so no label ends
+    # up upside down
+    rot <- (as.numeric(txt$rot) %% 360)
+    folded <- ifelse(rot > 90 & rot <= 270, rot - 180, ifelse(rot > 270, rot - 360, rot))
+    expect_true(all(abs(folded) <= 90 + 1e-9))
+
+    # and the angles must vary: a constant would mean the rotation is ignored
+    expect_gt(length(unique(round(as.numeric(txt$rot), 3))), 3)
+})
