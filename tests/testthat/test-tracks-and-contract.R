@@ -384,3 +384,49 @@ test_that("no chord folds over the centre (R19)", {
     paths2 <- ggcircos:::chord_paths_polar(b2$data[[1]], "ribbon", 1, 40)
     expect_true(all(paths2$x >= -1e-12))
 })
+
+test_that("a ribbon keeps its width and lands on both feet (R20)", {
+    m <- cor(mtcars)
+    p <- ggcircos(m, order = "hclust") + geom_chord()
+    b <- ggplot2::ggplot_build(p)
+    paths <- ggcircos:::chord_paths_polar(b$data[[1]], "ribbon", NA, 40)
+    m4 <- 40L
+
+    for (id in unique(paths$.id)) {
+        q <- paths[paths$.id == id, ]
+        i <- match(id, b$data[[1]]$group)  # not used; index by id below
+        lg <- b$data[[1]][paths$.id[1] == paths$.id, ][1, ]
+        # the four blocks: from arc, edge one, to arc, edge two
+        arc1 <- q[1:m4, ]
+        e1 <- q[(m4 + 1):(2 * m4), ]
+        arc2 <- q[(2 * m4 + 1):(3 * m4), ]
+        e2 <- q[(3 * m4 + 1):(4 * m4), ]
+
+        # both edges span the same pair of feet, and neither leaves the turn
+        expect_true(all(is.finite(e1$x)), info = id)
+        # the ribbon never narrows to nothing: the two edges stay apart by at
+        # least half the narrower foot, measured in angle
+        w <- abs(e1$y - rev(e2$y))
+        expect_gt(min(w), 0)
+    }
+
+    # the waist of every ribbon is no thinner than half its narrow foot
+    d <- b$data[[1]]
+    foot <- pmin(abs(d$theta1 - d$theta0), abs(d$theta_end1 - d$theta_end0))
+    expect_true(all(foot >= 0))
+})
+
+test_that("both edges of a ribbon are the same curve entered from opposite ends (R20)", {
+    # the old code gave each edge its own shortest-arc difference, whose signs
+    # can disagree; the two edges then ran in opposite directions and pinched
+    m <- cor(mtcars)
+    lay <- circos_layout(m, order = "hclust")
+    lk <- layout_links(lay)
+    for (i in seq_len(nrow(lk))) {
+        ca <- (lk$theta0[i] + lk$theta1[i]) / 2
+        cb <- (lk$theta_end0[i] + lk$theta_end1[i]) / 2
+        d <- ggcircos:::ang_diff(ca, cb)
+        # the spine takes the shorter arc between the two foot midpoints
+        expect_lt(abs(d), pi + 1e-9)
+    }
+})

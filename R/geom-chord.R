@@ -224,21 +224,45 @@ chord_paths_polar <- function(data, type, curvature, ncp) {
         for (i in seq_len(nrow(data))) {
             a0 <- data$theta0[i]; a1 <- data$theta1[i]
             b0 <- data$theta_end0[i]; b1 <- data$theta_end1[i]
-            d1 <- ang_diff(a1, b0)
-            d2 <- ang_diff(b1, a0)
-            k1 <- bulge_radius(d1, curvature)
-            k2 <- bulge_radius(d2, curvature)
+            # A ribbon is one chord swept across both feet. Run a single
+            # spine between the two foot *midpoints* and offset it by half
+            # the local foot width, so the two edges are the same curve by
+            # construction: sampling each edge from its own end made the
+            # ribbon pinch at one end and swell at the other ("the width does
+            # not look natural", review R20).
+            ca <- (a0 + a1) / 2
+            cb <- (b0 + b1) / 2
+            d <- ang_diff(ca, cb)
+            k <- bulge_radius(d, curvature)
             ring <- 1
+            tt <- seq(0, 1, length.out = m)
+            rr <- bezier_r_at(ring, k, ring, tt)
+            th <- bezier_t_at(ca, ca + d, tt)
+            # One spine, two offsets. The ribbon is the spine curve from the
+            # a-foot midpoint to the b-foot midpoint, widened by half the local
+            # foot width at each end and tapering to a waist in between.
+            # Building each edge from its own end (the obvious approach) makes
+            # the two travel in opposite directions around the circle --
+            # ang_diff(a1, b0) and ang_diff(b1, a0) come out with opposite
+            # signs -- and the ribbon folds shut in the middle (R20).
+            ca <- (a0 + a1) / 2
+            cb <- (b0 + b1) / 2
+            d <- ang_diff(ca, cb)
+            k <- bulge_radius(d, curvature)
+            ring <- 1
+            tt <- seq(0, 1, length.out = m)
+            rr <- bezier_r_at(ring, k, ring, tt)
+            th <- bezier_t_at(ca, ca + d, tt)
+            # half the foot width in radians, interpolated along the spine
+            hw <- (abs(a1 - a0) / 2) + (abs(b1 - b0) / 2 - abs(a1 - a0) / 2) * tt
             out[[length(out) + 1L]] <- data.frame(
                 x = c(
-                    rep(ring, arc_samples(m)), bezier_r(ring, k1, ring, m),
-                    rep(ring, arc_samples(m)), bezier_r(ring, k2, ring, m)
+                    rep(ring, arc_samples(m)), rr,
+                    rep(ring, arc_samples(m)), rev(rr)
                 ),
                 y = c(
-                    seq(a0, a1, length.out = arc_samples(m)),
-                    bezier_t(a1, a1 + d1, m),
-                    seq(b0, b1, length.out = arc_samples(m)),
-                    bezier_t(b1, b1 + d2, m)
+                    seq(a0, a1, length.out = arc_samples(m)), th + hw,
+                    seq(b1, b0, length.out = arc_samples(m)), rev(th - hw)
                 ),
                 .id = i
             )
@@ -349,6 +373,14 @@ bulge_cart <- function(d, curvature) {
 #' Radius along a cubic bezier whose control radii are both `k`.
 #' @keywords internal
 #' @noRd
+bezier_r_at <- function(r0, k, r1, tt) {
+    (1 - tt)^3 * r0 + 3 * (1 - tt)^2 * tt * k + 3 * (1 - tt) * tt^2 * k + tt^3 * r1
+}
+
+bezier_t_at <- function(t0, t1, tt) {
+    ((1 - tt)^3 + 3 * (1 - tt)^2 * tt) * t0 + (3 * (1 - tt) * tt^2 + tt^3) * t1
+}
+
 bezier_r <- function(r0, k, r1, m) {
     t <- seq(0, 1, length.out = m)
     (1 - t)^3 * r0 + 3 * (1 - t)^2 * t * k + 3 * (1 - t) * t^2 * k + t^3 * r1

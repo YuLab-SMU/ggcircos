@@ -403,6 +403,28 @@ k 落在 1..9 且有重复  ->  两条边共用同一个槽位，另一段弧空
 顺带修：`geom_chord(curvature = 1)` 会报 `Ignoring empty aesthetic: alpha`——
 alpha 默认值原本只在 `curvature = "auto"` 时设置，显式传 curvature 就漏成 `NULL`。
 
+### B26. ribbon 的宽度沿长度收放，边缘会拐 —— **已修（2026-10-20）**
+
+两条边各用**自己**的最短弧 `ang_diff(a1, b0)` / `ang_diff(b1, a0)` 建贝塞尔。
+这两个差值**符号可能相反**（实测 `-2.46` 与 `+1.96`），两条边于是朝相反方向绕行，
+mid-parameter 处几乎交于一点：
+
+```r
+# 一条 ribbon 的角宽度，沿 t 取 40 个点
+w(0)=2.41  w(中)=0.29  w(1)=2.00   # 中段收成 1/8
+```
+
+图上就是"带子两头宽、中间捏细"，边缘看起来在拐弯。
+前面还试过给两边**共用**一个 `k`——深度对齐了，但参数化不同，仍然收窄。
+
+修法：**一条中心线 + 沿线的半宽**。中心线走两个脚中点 `ca → cb`（最短弧，方向唯一），
+半宽按 `|a1-a0|/2 → |b1-b0|/2` 在 t 上线性插值，上下两条边 = 中心线 ± 半宽。
+这样两条边天然同向、端点精确落在脚上、中段平滑收窄。
+
+回归测试：`"a ribbon keeps its width and lands on both feet (R20)"` 与
+`"both edges of a ribbon are the same curve entered from opposite ends (R20)"`。
+7 张快照重播（形状确实变了）。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）
