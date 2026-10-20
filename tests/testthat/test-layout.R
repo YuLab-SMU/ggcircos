@@ -473,3 +473,30 @@ test_that("slot_gap gives every seam the same absolute width (R21)", {
     tight <- circos_layout(m, order = "hclust", slot_gap = 10)
     expect_true(all((layout_links(tight)$theta1 - layout_links(tight)$theta0) >= 0))
 })
+
+test_that("a single sector's span starts at its first node (R5)", {
+    # with one sector every node gap is an ordinary gap, so there is no
+    # strictly largest seam; the old which.max() picked the middle of them and
+    # rotated the run by one node, putting the sector's midpoint outside it
+    nodes <- data.frame(id = c("a1", "a2"), stringsAsFactors = FALSE)
+    for (st in c(0, 5.8, pi)) {
+        lay <- circos_layout(data.frame(from = "a1", to = "a2"), nodes = nodes,
+                             start = st)
+        nd <- layout_nodes(lay)
+        sec <- layout_sectors(lay)
+        expect_equal(sec$theta0, nd$theta0[1], tolerance = 1e-9)
+        expect_equal(sec$theta1, nd$theta1[nrow(nd)], tolerance = 1e-9)
+        # the label angle sits inside the run
+        arc <- ggcircos:::wrap_pi_arc(sec$theta0, sec$theta1)
+        off <- ggcircos:::wrap_pi_arc(sec$theta0, sec$theta)
+        expect_lte(off, arc + 1e-9)
+        expect_gte(off, 0)
+    }
+
+    # two sectors: the widest gap is the sector seam, so it is still found
+    nodes2 <- data.frame(id = c("a", "b", "c"), g = c("A", "A", "B"),
+                         stringsAsFactors = FALSE)
+    lay2 <- circos_layout(data.frame(from = c("a", "b"), to = c("b", "c")),
+                          nodes = nodes2, sectors = "g")
+    expect_equal(nrow(layout_sectors(lay2)), 2L)
+})

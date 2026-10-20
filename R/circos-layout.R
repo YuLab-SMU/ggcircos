@@ -538,8 +538,6 @@ circos_assign_sectors <- function(nd, sectors) {
     as.character(factor(out, levels = unique(c(names(sectors), "all"))))
 }
 
-#' @keywords internal
-#' @noRd
 #' Keep each sector's nodes together, preserving the order inside a sector
 #'
 #' The angle budget reserves one seam per *sector*, not per adjacent pair, so
@@ -639,7 +637,12 @@ sector_span <- function(theta0, theta1, order) {
     # gap between the end of one arc and the start of the next; the largest
     # one is where the sector is *not* contiguous on the ring
     ahead <- wrap_2pi(c(t0[-1], t0[1]) - t1)
-    k <- which.max(ahead)
+    # A single sector has no sector seam, so every gap ties and `which.max`
+    # would pick an ordinary node gap and rotate the run by one: the span
+    # then started at the second node and its midpoint fell outside the
+    # sector (review R5). With no strictly largest gap, start at the first
+    # node and keep the natural order.
+    k <- if (all(abs(ahead - max(ahead)) < 1e-12)) n else which.max(ahead)
     # rotate the arcs so the seam sits last: start just after the gap and
     # walk the whole run round
     i <- ((k %% n) + seq_len(n) - 1L) %% n + 1L

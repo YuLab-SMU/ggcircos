@@ -133,8 +133,11 @@ track_axis_data <- function(band, limits, breaks, labels, node_table, tick_lengt
     } else {
         as.character(labels)
     }
+    # Each label sits just past its *own* tick, one radius apart, so the set
+    # reads outward like a ruler. A shared radius (the old br + 2*tick)
+    # put them all on one circle where they overlapped (review R14).
     text <- empty(length(br))
-    text$x <- br + 2 * tick_length
+    text$x <- br + tick_length * 1.4
     text$y <- theta_axis
     text$label <- rep_len(lab, length(br))
     text$group <- "lab"
@@ -192,16 +195,12 @@ GeomTrackAxis <- ggproto("GeomTrackAxis", Geom,
             grid::nullGrob()
         }
         text_grob <- if (nrow(texts) > 0) {
-            # Axis labels read *along* the ring (the direction the ruler
-            # runs), which is the opposite of `rotate = TRUE` for node
-            # labels: those follow the ring's tangent, these sit on it. The
-            # radial direction is the perpendicular, so fold it back by 90
-            # and keep the left-half flip that stops the text from hanging
-            # upside down.
-            radial <- circos_screen_angle(coord, panel_params, texts$y)
-            a <- (radial - 90) %% 360
-            a <- ifelse(a > 90 & a < 270, a + 180, a)
-            texts$angle <- a
+            # Axis labels stay horizontal. They are stacked *along the
+            # radius* (one per break), so rotating them with the circle turns
+            # each into an upright column of digits sitting on top of the
+            # next one (review R14). A horizontal label reads outward at any
+            # angle, the way a circlize axis does.
+            texts$angle <- 0
             texts$hjust <- 0.5
             texts$vjust <- 0.5
             texts$size <- text.size
