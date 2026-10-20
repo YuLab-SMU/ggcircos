@@ -1,0 +1,404 @@
+---
+title: "Tracks and axes"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Tracks and axes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, comment = "#>")
+library(ggcircos)
+library(ggplot2)
+set.seed(20260101)
+```
+
+## What a track is
+
+A **track** is a radial band drawn just outside the node ring, holding one
+small plot per node. Every node of the ring gets its own slot in the band,
+and the value you have for that node decides how far the slot reaches: a
+column, a bar, an area, a boxplot, a point, a tile or a piece of text.
+
+`circlize` does this with a second drawing model. Its canvas is painted
+directly, so a track is a separate drawing call that needs its own clipping
+region, its own scale and its own axis, and the values have to be
+normalised by hand against the band's radii before they are handed over.
+
+`ggcircos` keeps the same idea but stores it as data. The band is declared
+up front, its radius interval becomes part of the layout, and normalising a
+value into that interval is the job of a *position* -- the same kind of
+object ggplot2 uses for `geom_bar()`. A track is therefore an ordinary
+ggplot2 layer: it can be faceted, it can carry a legend, and it obeys the
+same scales and themes as everything else on the plot.
+
+Two things follow from that and are worth remembering while reading the
+rest of this vignette:
+
+* the layout is computed once and never touched again, so a track cannot
+  disagree with the ring it is attached to;
+* `ggcircos()` adds no layer of its own -- a plot without a geom draws
+  nothing.
+
+## One track
+
+A track needs three things: a band declared in the layout, a data frame
+with one value per node, and the name of the column that holds the node
+ids.
+
+```{r one-track-data}
+m <- cor(mtcars)
+
+gc <- data.frame(
+  id = colnames(mtcars),
+  gc = runif(ncol(mtcars))
+)
+head(gc)
+```
+
+The band is declared with `tracks`, a named vector of widths measured in
+radii of the node ring. `track_offset` is the gap between the ring and the
+first band; the default of 0.02 would put the band right on top of the
+node arcs, so it is widened here to leave room for the node labels.
+
+```{r one-track-plot, fig.width = 6.5, fig.height = 6.5, fig.cap = "One track: a column per node, drawn in the band declared by `tracks = c(gc = 0.12)`."}
+p_one <- ggcircos(
+  m,
+  order = "hclust",
+  tracks = c(gc = 0.12),
+  track_offset = 0.12
+) +
+  geom_chord(aes(fill = r)) +
+  geom_track(
+    data = gc,
+    aes(x = gc),
+    node = id,
+    geom = "col",
+    band = "gc",
+    fill = "grey70",
+    colour = "grey30"
+  ) +
+  geom_node_arc() +
+  geom_node_text() +
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0
+  )
+p_one
+```
+
+Four parts of that call carry the whole idea:
+
+* **`tracks = c(gc = 0.12)`** declares the band and gives it a name. The
+  name is what a layer refers to later. A band that was never declared is
+  an error: `Unknown track "gc". Declared tracks: ...`.
+* **`band = "gc"`** says which declared band this layer draws into. It can
+  also be an explicit radius interval, `c(r0, r1)`, for a band that no
+  layer shares.
+* **`node = id`** is the *unquoted name of a column*, not a value. The
+  layer reads the ids out of that column and turns them into angles, using
+  the layout. Writing `node = "id"` (a string) or `node = gc` (the column
+  of values) does not do what it looks like.
+* **`aes(x = gc)`** maps the value that gets scaled into the band. The
+  scale is applied by the position, not by a ggplot2 axis, which is why
+  the band's own axis has to be asked for separately (see below).
+
+`geom = "col"` draws an anchored column: the bar starts at the inner edge
+of the band and ends at the scaled value. `"area"` and `"bar"` behave the
+same way; `"point"`, `"text"` and `"tile"` sit at a radius instead of
+growing out of the inner edge.
+
+The band is a plain data frame like everything else, and the layout of the
+plot can be asked for it:
+
+```{r one-track-layout}
+lay <- circos_layout_of(p_one)
+layout_tracks(lay)
+```
+
+`r0` and `r1` are the inner and outer radius of the band. They are the
+numbers the position maps values into, and they are why the same `gc`
+value lands at the same radius in every plot that uses the same layout.
+
+## Two tracks and an axis
+
+A second band is declared the same way, and each band gets its own layer.
+`scales = "fixed"` with explicit `limits` puts both bands on one scale,
+so the two tracks can be compared and the axis can mean something.
+
+```{r two-tracks-plot, fig.width = 7, fig.height = 7, fig.cap = "Two tracks and a radial axis. The axis stands in the gap before the first node and labels the `gc` band; the `depth` band uses the same 0-1 scale."}
+depth <- data.frame(
+  id = colnames(mtcars),
+  depth = runif(ncol(mtcars), 0.05, 0.40)
+)
+
+p_two <- ggcircos(
+  m,
+  order = "hclust",
+  tracks = c(gc = 0.12, depth = 0.12),
+  track_offset = 0.12
+) +
+  geom_chord(aes(fill = r)) +
+  geom_track(
+    data = gc, aes(x = gc), node = id, geom = "col", band = "gc",
+    scales = "fixed", limits = c(0, 1),
+    fill = "grey70", colour = "grey30"
+  ) +
+  geom_track(
+    data = depth, aes(x = depth), node = id, geom = "col", band = "depth",
+    scales = "fixed", limits = c(0, 1),
+    fill = "grey45", colour = "grey15"
+  ) +
+  geom_track_axis(band = "gc", limits = c(0, 1)) +
+  geom_node_arc() +
+  geom_node_text() +
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0
+  )
+p_two
+```
+
+The data behind the two layers is ordinary, and is worth looking at before
+it is drawn:
+
+```{r two-tracks-data}
+head(gc)
+head(depth)
+```
+
+The axis is a separate layer with its own geometry. It draws the two edges
+of the band as rings, one short radial tick per break standing at the start
+angle of the first node -- a gap, so the ticks never sit on a node arc --
+and the break labels read tangentially, each at the radius of its own
+break.
+
+`limits` is required, and it is required for a reason: `geom_track_axis()`
+is a layer of its own, and a layer cannot see the data of another layer.
+Rather than guess the range of the `gc` track it would have to invent one,
+so it refuses:
+
+```{r axis-error}
+msg <- tryCatch(
+  ggcircos(m, tracks = c(gc = 0.12)) +
+    geom_track(data = gc, aes(x = gc), node = id, geom = "col", band = "gc") +
+    geom_track_axis(band = "gc"),
+  error = function(e) conditionMessage(e)
+)
+cat(msg, "\n")
+```
+
+The error is raised when the layer is added, so it is caught while the
+plot is being built rather than when it is drawn. The rule to remember is
+short: give the axis the same `limits` you gave the track.
+
+## Different scales per node
+
+`geom_track()` needs to know where the band's inner edge and its outer
+edge are, and therefore where a value sits between them. `scales` says
+where the *value range* comes from.
+
+`scales = "free"` (the default) infers it from the data: the baseline is
+0 when every value is non-negative and the smallest value otherwise, and
+the top of the range is the largest value in the layer. The track fills its
+band, whatever the data happens to look like.
+
+`scales = "fixed"` uses the `limits` you pass, and every value is mapped
+through that pair. Use it when two tracks have to be read against each
+other, or when an axis has to mean one thing across several layers.
+
+```{r scales-plots, fig.width = 11, fig.height = 5.5, fig.cap = "The same two tracks with a free scale (left) and a fixed 0-1 scale (right). Under the free scale each band is stretched to its own data, so `depth` looks as long as `gc`; under the fixed scale both bands use 0-1 and the difference is visible."}
+track_pair <- function(scales, limits = NULL) {
+  ggcircos(
+    m,
+    order = "hclust",
+    tracks = c(gc = 0.12, depth = 0.12),
+    track_offset = 0.12
+  ) +
+    geom_chord(aes(fill = r)) +
+    geom_track(
+      data = gc, aes(x = gc), node = id, geom = "col", band = "gc",
+      scales = scales, limits = limits,
+      fill = "grey70", colour = "grey30"
+    ) +
+    geom_track(
+      data = depth, aes(x = depth), node = id, geom = "col", band = "depth",
+      scales = scales, limits = limits,
+      fill = "grey45", colour = "grey15"
+    ) +
+    geom_node_arc() +
+    geom_node_text() +
+    scale_fill_gradient2(
+      low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0
+    )
+}
+
+p_free <- track_pair("free")
+p_fixed <- track_pair("fixed", c(0, 1))
+
+grid::pushViewport(
+  grid::viewport(layout = grid::grid.layout(nrow = 1, ncol = 2))
+)
+print(p_free, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+print(p_fixed, vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+grid::popViewport()
+```
+
+The numbers behind the difference are the radii the position computed.
+The built data keeps the order of the input rows:
+
+```{r scales-numbers}
+built_free <- ggplot_build(p_free)
+built_fixed <- ggplot_build(p_fixed)
+
+data.frame(
+  id = depth$id,
+  depth = round(depth$depth, 3),
+  radius_free = round(built_free$data[[3]]$x, 4),
+  radius_fixed = round(built_fixed$data[[3]]$x, 4)
+)
+```
+
+One thing is worth spelling out, because it is easy to assume otherwise.
+In 0.1.0 the range is taken from the layer's data *as a whole*, not from
+each node separately: a node whose values cover a narrow range ends up with
+a short bar even when another node in the same track reaches the edge of
+the band. `scales = "fixed"` does not change that either -- it only
+replaces the inferred range with one you declare. So `limits` is the tool
+for comparing nodes against each other, and the per-node normalisation
+that the documentation describes is not implemented yet.
+
+Values outside `limits` are not clipped. They are mapped past the outer
+edge of the band, and the plot's own radius limit squishes them at the
+edge of the panel, so `limits` should cover the data.
+
+## Facets
+
+Faceting works because the layout is shared. A facet splits the *links*,
+not the ring: the chord layer is cut into one set of links per panel, while
+the node ring is the same ring in every panel.
+
+The data for this section is four samples over six shared nodes. Each
+sample has its own links, and `sample` is an ordinary column of the link
+table, which is what the facet variable has to be.
+
+```{r facet-data}
+nodes <- c("A", "B", "C", "D", "E", "F")
+samples <- c("s1", "s2", "s3", "s4")
+
+links <- do.call(rbind, lapply(samples, function(s) {
+  pairs <- t(combn(sample(nodes, 4), 2))
+  data.frame(
+    from = pairs[, 1], to = pairs[, 2], sample = s,
+    r = runif(nrow(pairs)),
+    stringsAsFactors = FALSE
+  )
+}))
+head(links)
+```
+
+```{r facet-plot, fig.width = 8, fig.height = 6, fig.cap = "One ring, four sets of links. The facet splits the chords; the node arcs and their labels are the same in every panel."}
+p_facet <- ggcircos(links, order = "hclust") +
+  geom_chord(aes(fill = r)) +
+  geom_node_arc() +
+  geom_node_text() +
+  facet_wrap(~ sample, nrow = 2) +
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "white", high = "#b2182b", midpoint = 0
+  )
+p_facet
+```
+
+`ggplot_build()` makes the structure visible. It returns **one data frame
+per layer**, not one per panel; the `PANEL` column says which panel a row
+belongs to.
+
+```{r facet-build}
+built <- ggplot_build(p_facet)
+
+length(built$data)
+vapply(built$data, nrow, integer(1))
+```
+
+The chord layer holds all 24 links at once, and the `PANEL` column splits
+them into the four panels:
+
+```{r facet-build-panels}
+table(built$data[[1]]$PANEL)
+```
+
+The node ring holds no facet variable, so ggplot2 replicates it into every
+panel -- six arcs per panel, at the same angles:
+
+```{r facet-build-ring}
+arc <- built$data[[2]]
+table(arc$PANEL)
+tapply(arc$y, arc$PANEL, function(theta) length(unique(theta)))
+```
+
+The same is true of a track layer whose data has no facet column: it is
+replicated, so the ring and its tracks stay identical across panels while
+the chords change. Give the track data a facet column of its own if the
+tracks should differ per panel.
+
+## Tiles
+
+A tile track turns a node's arc into a sequence of bins. The rows of one
+node are its bins, in the order they appear in the data, and they split the
+arc evenly. The value is carried by colour, because a tile fills the band
+radially instead of growing out of its inner edge.
+
+```{r tiles-plot, fig.width = 6.5, fig.height = 6.5, fig.cap = "A tile track: four bins per node, coloured by their value. The chords are flat so that the fill scale belongs to the track."}
+bins <- 4
+heat <- data.frame(
+  id = rep(colnames(mtcars), each = bins),
+  value = runif(ncol(mtcars) * bins)
+)
+head(heat)
+
+p_tiles <- ggcircos(
+  m,
+  order = "hclust",
+  tracks = c(heat = 0.18),
+  track_offset = 0.12
+) +
+  geom_chord(fill = "grey85") +
+  geom_track(
+    data = heat,
+    aes(fill = value),
+    node = id,
+    geom = "tile",
+    band = "heat"
+  ) +
+  geom_node_arc() +
+  geom_node_text() +
+  scale_fill_gradient2(
+    low = "#2166ac", mid = "white", high = "#b2182b",
+    midpoint = 0.5, limits = c(0, 1)
+  )
+p_tiles
+```
+
+Two details are worth keeping in mind:
+
+* the `x` aesthetic is a placeholder for a tile; the value belongs in
+  `fill`, and the band is filled from `r0` to `r1` regardless;
+* the fill scale belongs to whoever maps `fill`. Here the chords use a
+  constant grey so that the gradient describes the track. ggplot2 has one
+  fill scale per plot, so a plot that colours both the chords and the
+  tiles by different quantities has to pick one of them to colour.
+
+## What this does not do yet
+
+* **No self-loops.** A link with `from == to` cannot be drawn in 0.1.0.
+  It is dropped when the layout is built, with a message:
+  `Dropped 1 self-link (from == to); ggcircos 0.1.0 does not draw them.`
+  Asking for `self_loops = TRUE` is an error.
+* **No label collision avoidance.** `geom_node_text()` puts one label on
+  each node and nothing checks whether the labels fit. Short nodes next to
+  each other produce overlapping text.
+* **No violin or density tracks.** The track geometries are `col`/`bar`,
+  `area`, `boxplot`, `point`, `tile` and `text`. A distribution drawn
+  along the arc is not available.
+* **No axis on the angular direction.** `geom_track_axis()` is a radial
+  ruler. There are no ticks along the ring and no angular axis, and the
+  angular scale is fixed by the layout to `[0, 2 * pi]`.

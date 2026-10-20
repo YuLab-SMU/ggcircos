@@ -1,0 +1,224 @@
+---
+title: "Chord diagrams from a correlation matrix"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Chord diagrams from a correlation matrix}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, comment = "#>")
+library(ggcircos)
+library(ggplot2)
+set.seed(42)
+```
+
+## What a chord diagram is here
+
+Each node owns an arc of the circle. Each link owns a *slot* inside the arc of
+every node it touches, and is drawn as a ribbon between its two slots. The arc
+width is proportional to the number of links a node carries — not to the
+value of those links — so a busy node gets a wide arc and its links fan out
+inside it. The value belongs to the ribbon's colour, not its foot.
+
+ggcircos computes all of that once, into a plain table:
+
+```{r layout-table}
+lay <- circos_layout(cor(mtcars), order = "hclust")
+head(layout_nodes(lay))
+```
+
+Every geom in the package reads this table. None of them recompute it. That
+one decision is what makes the rest of this vignette — and facets, scales and
+legends — work the way they do in ggplot2.
+
+## The thirty-second version
+
+```{r hello, fig.width = 5.5, fig.height = 5.5, fig.cap = "A chord diagram of the mtcars correlation matrix."}
+ggcircos(cor(mtcars), order = "hclust") +
+  geom_chord(aes(fill = r)) +
+  geom_node_arc() +
+  geom_node_text()
+```
+
+Line by line:
+
+- `ggcircos(cor(mtcars), order = "hclust")` builds the layout from the matrix
+  and returns a plain `ggplot` object. It draws nothing itself.
+- `geom_chord(aes(fill = r))` draws one ribbon per link, filled by the
+  correlation value `r` (a matrix is turned into links with columns `from`,
+  `to`, `r`).
+- `geom_node_arc()` draws the node ring just outside the circle of links.
+- `geom_node_text()` puts the node labels outside the ring.
+
+The legend appeared without being asked for, because `fill` is a normal
+ggplot2 aesthetic.
+
+## Ordering the nodes
+
+The order of the arcs is the layout's only real degree of freedom. Three ways
+to set it:
+
+```{r order}
+# 1. input order (the default)
+ggcircos(cor(mtcars)) + geom_chord(aes(fill = r)) + geom_node_arc() + geom_node_text()
+```
+
+```{r order-hclust, fig.width = 5.5, fig.height = 5.5, fig.cap = "Nodes ordered by hierarchical clustering: correlated variables end up adjacent."}
+# 2. hierarchical clustering of the matrix
+ggcircos(cor(mtcars), order = "hclust") +
+  geom_chord(aes(fill = r)) + geom_node_arc() + geom_node_text()
+```
+
+```{r order-explicit, fig.width = 5.5, fig.height = 5.5, fig.cap = "An explicit order vector: the strongest correlations are pulled together by hand."}
+# 3. an explicit vector of node ids — it must list every node exactly once
+ggcircos(cor(mtcars), order = c("mpg", "wt", "cyl", "disp", "hp", "drat",
+                                "qsec", "vs", "am", "gear", "carb")) +
+  geom_chord(aes(fill = r)) + geom_node_arc() + geom_node_text()
+```
+
+`order = "hclust"` clusters the matrix and lays the leaves out around the
+circle. For a correlation matrix this is almost always what you want: the
+blocks of variables that move together become adjacent arcs, and the ribbons
+stop crossing the whole circle.
+
+What the order actually changed, as data:
+
+```{r order-diff}
+a <- layout_nodes(circos_layout(cor(mtcars)))
+b <- layout_nodes(circos_layout(cor(mtcars), order = "hclust"))
+data.frame(input_order = paste(a$id, collapse = " "),
+           hclust_order = paste(b$id, collapse = " "))
+```
+
+## Colouring by value
+
+`aes(fill = r)` maps a continuous variable; any ggplot2 fill scale works, and
+the legend is automatic:
+
+```{r colour-continuous, fig.width = 5.5, fig.height = 5.5, fig.cap = "A diverging scale: positive correlations warm, negative cool."}
+ggcircos(cor(mtcars), order = "hclust") +
+  geom_chord(aes(fill = r)) +
+  scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                       midpoint = 0, name = "r") +
+  geom_node_arc() + geom_node_text()
+```
+
+A discrete mapping is just as ordinary:
+
+```{r colour-discrete, fig.width = 5.5, fig.height = 5.5, fig.cap = "Ribbons coloured by sign, a factor-level fill."}
+m <- cor(mtcars)
+ggcircos(m, order = "hclust") +
+  geom_chord(aes(fill = ifelse(r > 0, "positive", "negative"))) +
+  geom_node_arc() + geom_node_text()
+```
+
+One caveat worth knowing: a continuous fill is quantised into batches before
+drawing (so a 500-link diagram is a few dozen grobs, not 500). Each batch
+draws with one exact colour, at most 8/255 off any member. Visually
+indistinguishable; bit-for-bit not identical.
+
+## Ribbons or curves
+
+```{r line, fig.width = 5.5, fig.height = 5.5, fig.cap = "type = \"line\": the same slots, drawn as curves."}
+ggcircos(cor(mtcars), order = "hclust") +
+  geom_chord(aes(colour = r), type = "line") +
+  scale_colour_gradient2(low = "steelblue", mid = "grey80", high = "firebrick",
+                         midpoint = 0) +
+  geom_node_arc() + geom_node_text()
+```
+
+`type = "line"` keeps the slot geometry — each link still leaves its node at
+its own slot — but draws a curve instead of a filled ribbon. With many links
+it stays readable where ribbons turn into mud. `curvature` controls how far
+the ribbon bulges toward the centre; the default `"auto"` scales it with the
+angular distance between the two ends.
+
+## Sectors
+
+A sector is a group of nodes drawn with a wider gap around it — the way
+circlize groups chromosomes. Pass a `nodes` table with an id column and a
+column naming the sector, then point `sectors` at it:
+
+```{r sectors, fig.width = 5.5, fig.height = 5.5, fig.cap = "Two sectors (ref / qry) with a wider gap between them."}
+nodes <- data.frame(
+  id = c(paste0("ref", 1:4), paste0("qry", 1:4)),
+  genome = rep(c("ref", "qry"), each = 4)
+)
+links <- data.frame(
+  from = c("ref1", "ref2", "ref3", "ref1"),
+  to   = c("qry2", "qry3", "qry4", "qry4")
+)
+ggcircos(links, nodes = nodes, sectors = "genome") +
+  geom_chord(aes(fill = from)) +
+  geom_node_arc() +
+  geom_node_text() +
+  geom_sector_label()
+```
+
+`geom_sector_label()` labels the sector, not the node; it uses the
+ring-contiguous run of each sector's nodes, which is why a sector that
+straddles the start angle still gets one label at its middle.
+
+## Other input shapes
+
+A link table is the general form — a matrix is just a shortcut for one:
+
+```{r links}
+head(data.frame(from = "mpg", to = "wt", r = cor(mtcars)["mpg", "wt"]))
+```
+
+Graph objects work directly:
+
+```{r igraph, fig.width = 5, fig.height = 5, fig.cap = "An igraph object: the same layout machinery, fed from a graph.", eval = requireNamespace("igraph", quietly = TRUE)}
+g <- igraph::graph_from_data_frame(
+  data.frame(from = c("a", "b", "c", "d"),
+             to   = c("b", "c", "a", "a"),
+             w    = c(3, 1, 2, 4))
+)
+ggcircos(g) + geom_chord(aes(fill = w)) + geom_node_arc() + geom_node_text()
+```
+
+`tidygraph::tbl_graph` works the same way. What the package reads natively is:
+a square symmetric matrix, a data frame with `from`/`to`, an igraph or
+tbl_graph object. Anything else becomes one of those three before the layout
+sees it.
+
+## Getting the layout back as data
+
+The layout is not hidden inside the plot. `circos_layout()` returns it, and
+the `layout_*()` accessors return plain data frames:
+
+```{r layout-data}
+lay <- circos_layout(cor(mtcars)[1:6, 1:6], order = "hclust")
+layout_nodes(lay)
+```
+
+```{r layout-links}
+head(layout_links(lay))
+```
+
+Every column the geoms use is there: `theta0`/`theta1` are the node's arc,
+and a link's `theta0`/`theta1` are the two slots it occupies. You can filter
+it, join it, or feed it to your own geoms:
+
+```{r custom-geom, fig.width = 5, fig.height = 5, fig.cap = "A hand-drawn node ring: geom_segment() over the layout table, no package geoms."}
+nd <- layout_nodes(lay)
+ggplot(nd, aes(x = 1, y = theta0)) +
+  geom_segment(aes(x = 1, xend = 1, y = theta0, yend = theta1), linewidth = 4) +
+  coord_circos(limits = c(0, 2 * pi)) +
+  theme_circos()
+```
+
+This is the whole point of the design: the layout is data, the geoms are
+consumers, and you are allowed to be one too.
+
+## What this does not do yet
+
+- Self-loops (`from == to`) are dropped with a message in v0.1.
+- Labels are not collision-avoided; a dense ring will overlap. Use
+  `geom_node_text(rotate = TRUE)` to follow the circle, which buys space.
+- No angular (clock) axis, no violin/density tracks.
+- The y (angle) scale is fixed to `[0, 2*pi]` by the layout. Replacing it
+  breaks angles, and the coordinate warns when you do.

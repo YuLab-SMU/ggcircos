@@ -1,0 +1,34 @@
+url: ~
+template:
+  bootstrap: 5
+articles:
+- title: Articles
+  navbar: ~
+  contents:
+  - correlation
+  - tracks
+  - from-circlize
+reference:
+- title: Plot
+  desc: Build the layout and the plot object
+  contents:
+  - ggcircos
+  - circos_layout
+  - starts_with("layout_")
+- title: Layers
+  contents:
+  - geom_chord
+  - starts_with("geom_node")
+  - starts_with("geom_track")
+  - geom_sector_label
+  - position_track
+- title: Coordinates and theme
+  contents:
+  - coord_circos
+  - coord_arc
+  - theme_circos
+- title: Legacy
+  contents:
+  - geom_circos
+  - geom_curve_link
+  - geom_link_lab

@@ -146,11 +146,16 @@ circos_layout.data.frame <- function(x, nodes = NULL, ...) {
 #' @export
 circos_layout.tbl_graph <- function(x, nodes = NULL, ...) {
     require_suggests("tidygraph", "tbl_graph")
-    graph_to_input(
-        tidygraph::as_tibble(tidygraph::activate(x, "nodes")),
-        tidygraph::as_tibble(tidygraph::activate(x, "edges")),
-        nodes = nodes, ...
-    )
+    verts <- as.data.frame(tidygraph::as_tibble(tidygraph::activate(x, "nodes")))
+    edges <- as.data.frame(tidygraph::as_tibble(tidygraph::activate(x, "edges")))
+    # tidygraph stores edge endpoints as 1-based *indices* into the node
+    # table, where igraph stores names; resolve them to the same names the
+    # node table will be keyed by (B19)
+    ids <- if ("name" %in% names(verts)) as.character(verts$name) else
+        as.character(seq_len(nrow(verts)))
+    edges[[1]] <- ids[edges[[1]]]
+    edges[[2]] <- ids[edges[[2]]]
+    graph_to_input(verts, edges, nodes = nodes, ...)
 }
 
 #' @rdname circos_layout
@@ -176,7 +181,12 @@ graph_to_input <- function(vertices, edges, nodes, ...) {
         to = as.character(edges[[2]]),
         stringsAsFactors = FALSE
     )
+    # edge attributes come along as value columns: `weight` is named `r` (the
+    # matrix path's name), any other attribute keeps its own name. Dropping
+    # them made `aes(fill = w)` fail on an igraph input (B19).
     if ("weight" %in% names(edges)) links$r <- edges$weight
+    keep <- setdiff(names(edges), c(names(edges)[1:2], "weight"))
+    for (nm in keep) links[[nm]] <- edges[[nm]]
     circos_layout_build(
         links = links,
         nodes = nodes,

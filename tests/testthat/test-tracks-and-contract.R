@@ -264,6 +264,27 @@ test_that("continuous fill does not explode into one grob per link (B11)", {
     expect_equal(grobs_of(ggcircos(m) + geom_chord(type = "line")), 1L)
 })
 
+test_that("graph inputs keep their edge attributes (B19)", {
+    skip_if_not_installed("igraph")
+    df <- data.frame(from = c("a", "b", "c", "d"),
+                     to = c("b", "c", "a", "a"),
+                     w = c(3, 1, 2, 4),
+                     stringsAsFactors = FALSE)
+    g <- igraph::graph_from_data_frame(df)
+    lay <- circos_layout(g)
+    expect_equal(lay$links$w, df$w)
+    expect_equal(lay$links$from, df$from)
+    # the value column is usable in a mapping
+    p <- ggcircos(g) + geom_chord(aes(fill = w)) + geom_node_arc()
+    expect_equal(nrow(ggplot2::ggplot_build(p)$data[[1]]), 4L)
+
+    skip_if_not_installed("tidygraph")
+    tg <- tidygraph::as_tbl_graph(g)
+    lay2 <- circos_layout(tg)
+    expect_equal(lay2$links$from, df$from)
+    expect_equal(lay2$links$w, df$w)
+})
+
 test_that("plots roundtrip through rds and facet", {
     nodes <- data.frame(
         id = c("a", "b", "c", "d"),

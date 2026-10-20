@@ -7,3 +7,10 @@
 ^\.Rproj\.user$
 ^\.Rproj$
 ^notes$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github$
+^Rplots\.pdf$
+^tests/testthat/Rplots\.pdf$
+^README\.html$

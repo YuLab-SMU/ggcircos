@@ -1,0 +1,181 @@
+---
+title: "From circlize to ggcircos"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{From circlize to ggcircos}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE, collapse = TRUE, comment = "#>")
+library(ggcircos)
+library(ggplot2)
+set.seed(42)
+```
+
+## The honest framing
+
+[circlize](https://cran.r-project.org/package=circlize) is the most capable
+circular-plotting package in R. It has more geometry types, more options, and
+a decade of accumulated edge-case handling. If you need a ideogram with
+cytogenetic bands, use circlize.
+
+ggcircos exists for the things circlize structurally cannot do. circlize
+paints into its own canvas: the figure is a side effect of a sequence of
+drawing calls, not an object. So you cannot facet a circlize figure, you
+cannot drive its colours with a `ggplot2` scale and get a legend, you cannot
+compose two of them with patchwork, and you cannot save one and add a layer
+next week. ggcircos keeps the circular layout but hands the drawing back to
+ggplot2, because the layout is just a table of angles.
+
+This vignette maps the API and shows the three things you can do here and
+cannot do there.
+
+## The same picture, two ways
+
+```{r side-by-side-circlize, fig.width = 5, fig.height = 5, fig.cap = "circlize: the same 6x6 correlation matrix."}
+mat <- round(cor(mtcars)[1:6, 1:6], 2)
+
+circlize::chordDiagram(as.matrix(mat), symmetric = TRUE,
+                       diffHeight = 0.02,
+                       annotationTrack = "grid",
+                       preAllocateTracks = list(list(track.height = 0.08)))
+# the labels live in the annotation track's panel function, querying the
+# canvas for each cell's position -- this is the part with no ggplot2 analogue
+circlize::circos.trackPlotRegion(track.index = 1, panel.fun = function(x, y) {
+    xlim <- circlize::get.cell.meta.data("xlim")
+    circlize::circos.text(mean(xlim), 0.04,
+                          circlize::get.cell.meta.data("sector.index"),
+                          cex = 0.7, facing = "outside")
+})
+```
+
+```{r side-by-side-ggcircos, fig.width = 5, fig.height = 5, fig.cap = "ggcircos: the same matrix, with the legend for free."}
+p <- ggcircos(mat, order = "hclust") +
+    geom_chord(aes(fill = r)) +
+    scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                         midpoint = 0, name = "r") +
+    geom_node_arc() +
+    geom_node_text()
+print(p)
+```
+
+The circlize call is one line; the labels are two more, because circlize
+draws them through a panel function that queries its own canvas. The ggcircos
+call is the layout plus four layers, and the legend came free.
+
+## The API map
+
+| circlize | ggcircos | note |
+|---|---|---|
+| `chordDiagram(mat)` | `ggcircos(mat) + geom_chord()` | matrix input is native |
+| `chordDiagramFromDataframe(df)` | `ggcircos(df, nodes = , sectors = )` | a link table is the general form |
+| `circos.initialize(factors = )` | `sectors = "col"` | a sector is a group of nodes |
+| `circos.track(...)` | `ggcircos(tracks = c(...)) + geom_track(...)` | bands are declared up front |
+| `circos.text(...)` | `geom_node_text()` / `geom_track(geom = "text")` | |
+| `circos.axis(...)` | `geom_track_axis(band = , limits = )` | `limits` is required |
+| `circos.link(...)` | `geom_chord(type = "line")` | |
+| `circos.par(...)` | `theme_circos()` + layer arguments | there is no global state |
+| `get.cell.meta.data(...)` | `layout_nodes()` / `layout_links()` | the canvas query became a table |
+
+Two translation rules cover most of the rest. circlize's global state
+(`circos.par`, the current track index) becomes explicit arguments on the
+layer that uses them. And circlize's `track.height` becomes a named width in
+`tracks = c(name = width)`, because the bands must be declared before any
+layer can refer to them.
+
+## What only ggcircos can do
+
+### Facets
+
+Four samples of the same eight variables. In circlize this means four
+independent canvases with no shared ordering; here it is one `facet_wrap()`:
+
+```{r facet, fig.width = 8, fig.height = 5, fig.cap = "One layout, four panels: the chords split per sample, the node ring is shared."}
+mk <- function(s) {
+    m <- matrix(runif(8 * 8), 8, 8)
+    m <- (m + t(m)) / 2
+    diag(m) <- 0
+    d <- as.data.frame(as.table(m))
+    names(d) <- c("from", "to", "r")
+    d$sample <- s
+    d
+}
+links <- do.call(rbind, lapply(1:4, mk))
+
+p_facet <- ggcircos(links, order = "hclust") +
+    geom_chord(aes(fill = r)) +
+    geom_node_arc() +
+    geom_node_text() +
+    facet_wrap(~ sample)
+print(p_facet)
+```
+
+The build proves the structure: one data frame per *layer*, each carrying a
+`PANEL` column — not one drawing per panel.
+
+```{r facet-build}
+b <- ggplot_build(p_facet)
+c(panels = length(unique(b$layout$layout$PANEL)),
+  layers = length(b$data),
+  rows_per_layer = vapply(b$data, nrow, integer(1)))
+```
+
+### Scales and legends
+
+The fill of a ribbon is a mapped aesthetic, so the whole ggplot2 scale system
+applies — including legends, guides, and `scale_*_manual()`:
+
+```{r scale, fig.width = 5.5, fig.height = 5.5, fig.cap = "A diverging scale drives the ribbons and the legend."}
+ggcircos(cor(mtcars), order = "hclust") +
+    geom_chord(aes(fill = r)) +
+    scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                         midpoint = 0, name = "correlation") +
+    geom_node_arc() + geom_node_text()
+```
+
+### Composition
+
+A ggcircos plot is a grob like any other, so it composes:
+
+```{r compose, fig.width = 8, fig.height = 4, fig.cap = "A chord diagram and a track diagram side by side.", eval = requireNamespace("patchwork", quietly = TRUE)}
+p_a <- ggcircos(cor(mtcars), order = "hclust") +
+    geom_chord(aes(fill = r)) + geom_node_arc() + theme_circos()
+vals <- data.frame(id = rep(colnames(mtcars), each = 3),
+                   value = runif(33))
+p_b <- ggcircos(cor(mtcars), order = "hclust", tracks = c(v = 0.25)) +
+    geom_track(data = vals, aes(x = value), node = id, band = "v") +
+    geom_node_arc() + theme_circos()
+p_a + p_b + patchwork::plot_annotation(title = "two rings, one grammar")
+```
+
+## What ggcircos does not do yet
+
+- Self-loops (`from == to`) are dropped with a message.
+- No label collision avoidance; rotate labels or shorten them.
+- No violin/density/heatmap *track types* beyond `col`, `bar`, `area`,
+  `boxplot`, `point`, `tile`, `text`.
+- No angular axis (the circle has no "hours" scale).
+- No ideogram / cytogenetic band knowledge — circlize ships the data, we do
+  not.
+- No interactive output. `plotly::ggplotly()` will not crash on a ggcircos
+  plot, but it will not render the chords either.
+- A continuous fill is quantised into batches of at most 8/255 colour steps
+  to keep the grob count low.
+
+These are choices, not oversights: the package is one grammar, not a
+feature race.
+
+## If you are coming from circlize
+
+1. Replace `chordDiagram(mat)` with `ggcircos(mat) + geom_chord()` and add
+   `geom_node_arc()` / `geom_node_text()` — the annotation ring is a layer
+   now, not a side effect.
+2. Move each `circos.track()` into `geom_track()`, and declare its band in
+   `ggcircos(tracks = c(name = width))` first.
+3. Keep the sector concept: `circos.initialize(factors = )` becomes
+   `nodes = ` plus `sectors = "col"`.
+4. Expect to set `limits` yourself on `geom_track_axis()`; ggcircos will not
+   guess the range of another layer's data.
+5. Then try the thing you could not do before: `facet_wrap(~ sample)`.
