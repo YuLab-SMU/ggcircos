@@ -83,6 +83,22 @@ test_that("D2: several tracks, disjoint bands, and an axis", {
     # the axis marks the break radii, not the band edges
     ax <- b$data[[6]]
     expect_true(any(nzchar(ax$label)))
+
+    # and the whole thing still facets: chords split per panel, tracks shared
+    lk2 <- links
+    lk2$batch <- rep(c("x", "y"), each = 3)
+    pf <- ggcircos(lk2, nodes = nodes, sectors = "genome",
+                   tracks = c(gc = 0.12, depth = 0.12, gene = 0.12)) +
+        geom_chord(aes(fill = from)) +
+        geom_track(data = trk, aes(x = value), node = id, band = "gc") +
+        ggplot2::facet_wrap(~ batch)
+    bf <- ggplot2::ggplot_build(pf)
+    expect_equal(length(unique(bf$layout$layout$PANEL)), 2L)
+    expect_equal(as.integer(table(bf$data[[1]]$PANEL)), c(3L, 3L))
+    # the track layer is shared data drawn in *every* panel (spec 9.1:
+    # chords split, the node ring and its tracks are replicated)
+    expect_equal(nrow(bf$data[[2]]), nrow(trk) * 2L)
+    expect_equal(as.integer(table(bf$data[[2]]$PANEL)), rep(nrow(trk), 2L))
 })
 
 test_that("D3: the layout is data -- plain geoms reproduce the node ring", {

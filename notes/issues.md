@@ -275,6 +275,17 @@ spec §4.6 写的"两端独立分配"（以及 §4.3-6"入射边按…排序，�
 回归测试：`test-demos.R` 的 D2（三条带两两不相交 + 每条落在自己 band 内）。
 3 张快照随之外移（stacked-tracks / track-axis / deprecated-wrappers），已目检 + accept。
 
+### B19. 图对象输入丢边属性，tidygraph 端点不解析 —— **已修（2026-10-20）**
+
+`graph_to_input()` 只保留 `weight`（改名 `r`），其它边属性（`w`、`pident`…）全丢，
+`geom_chord(aes(fill = w))` 报 "object 'w' not found"。
+`circos_layout.tbl_graph()` 更糟：tidygraph 的边表用**1 基整数索引**存端点，
+直接 `as.character(edges[[1]])` 得到 "1","2"，与节点名对不上，layout 报
+"order must list every node"。
+
+修法：边属性按原名列进 links（`weight` 仍映射为 `r`）；tbl_graph 端点先过
+`ids[edges[[1]]]` 解析成节点名。回归测试：`"graph inputs keep their edge attributes"`。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

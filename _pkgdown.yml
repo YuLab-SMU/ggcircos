@@ -1,4 +1,4 @@
-url: ~
+url: https://yulab-smu.github.io/ggcircos/
 template:
   bootstrap: 5
 articles:
@@ -14,7 +14,9 @@ reference:
   contents:
   - ggcircos
   - circos_layout
+  - circos_layout_of
   - starts_with("layout_")
+  - track_angles
 - title: Layers
   contents:
   - geom_chord

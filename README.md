@@ -16,7 +16,7 @@ ggplot2 chord packages that draw one fixed diagram do not need.
 
 ``` r
 install.packages("ggcircos")   # or:
-remotes::install_github("YuLabSMU/ggcircos")
+remotes::install_github("YuLab-SMU/ggcircos")
 ```
 
 ## Thirty seconds

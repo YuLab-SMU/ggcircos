@@ -69,24 +69,27 @@
 
 定位靠图证明，不靠 bullet。三条都要进 README 第一屏 + 对应 vignette。
 
-### D1 — 一次出多个环（杀手图）
+### D1 — 一次出多个环（杀手图）—— **已落地（2026-10-20）**
 
 **目的**：证明 facet 不是"顺手支持"，而是结构性差异。
 
 **数据**：4–6 个样本，每样本同一套节点、不同权重（相关性矩阵 / 物种丰度 / 基因家族计数均可）。
 
-**验收（可执行断言）**：
+**验收（可执行断言）**：见 `tests/testthat/test-demos.R` 的 D1。
 
 ```r
 p <- ggcircos(links_by_sample, order = "hclust") +
   geom_chord(aes(fill = r)) + geom_node_text() +
   facet_wrap(~ sample)
 b <- ggplot_build(p)
-length(unique(b$layout$layout$PANEL)) == n_samples   # 每样本一个独立的环
-length(b$data) == 2                                  # 每层一份数据，不是每 panel 一坨
+length(unique(b$layout$layout$PANEL)) == n_samples   # 每样本一个 panel
+length(b$data) == 3                                  # 每层一份数据，不是每 panel 一坨
 ```
 
-外加视觉验收：4 个环尺寸一致、图例只有一个、`ggsave()` 一张 PDF 直出。
+**v0.1 的真实语义（spec §9.1 甲方案）**：分面**切开弦**（每 panel 只画本组链接），
+**节点环共享**（每 panel 复制同一套弧）。所以"一次出多个环"成立，但多个环的
+**节点顺序相同**——这是设计，不是缺陷；每 panel 独立排序是 v0.2 的开放问题（spec §17）。
+README 的 facets 图与 `vignette("from-circlize")` 的 facet 一节都是这张图。
 
 ### D2 — BRIG 式整图（场景入口）
 
@@ -94,32 +97,25 @@ length(b$data) == 2                                  # 每层一份数据，不�
 
 **数据**：2 个基因组的 BLAST 块 + 每基因组的 GC / 深度 / 基因密度三轨。
 
-**验收**：
+**验收**：见 `tests/testthat/test-demos.R` 的 D2（三条带两两不相交 + 每条落在自己
+band 内 + 轴刻度落在 break 半径上）。README 的 tracks 图就是这张。
 
-```r
-b <- ggplot_build(p)
-# 三条轨道两两不相交
-r <- lapply(2:4, function(i) range(b$data[[i]]$x))
-all(r[[1]][2] <= r[[2]][1], r[[2]][2] <= r[[3]][1])
-# 分面仍然成立
-length(unique(b$layout$layout$PANEL)) == 2
-# 轴的 breaks 落在 band 内
-```
+> 落地时修出 B18（三条带重叠）与默认 `track_offset` 盖住节点环两个 bug——这张
+> demo 图的价值正在这里：它逼出了两条轨道测不出来的问题。
 
 **注意**：**不做 BLAST 文件 IO**。ggchord 已经做完 `read_blast()` / `read_gff3()`，我们兼容它的列名即可（`qaccver` / `saccver` / `qstart` / `qend` / `sstart` / `send` / `pident`）。
 
-### D3 — layout 即数据（可扩展性证明）
+### D3 — layout 即数据（可扩展性证明）—— **已落地（2026-10-20）**
 
 **目的**：证明"布局是数据"不是口号，是别人能依赖的接口。
 
-**验收**：只用 `layout_nodes()` + 普通 `geom_segment()` / `geom_point()` + `coord_circos()`，不调用任何 `geom_node_*` 画出节点层；断言：
+**验收**：`test-demos.R` 的 D3——只用 `layout_nodes()` + 普通 `geom_segment()` +
+`coord_circos()`，不调用任何 `geom_node_*` 画出节点环；`ggplot_build()` 通过，
+角度范围与包自己的图层一致。README 的 as-data 图与 `vignette("correlation")`
+最后一节都是这张。
 
-```r
-tr <- coord$transform(data.frame(x = 1, y = nd$theta), pp)
-# 与 layout 的角度一致，容差 1e-6
-```
-
-外加：`ggplot_build()` 通过、`facet_wrap()` 仍成立。
+为它顺手补的口子：`coord_circos(limits = c(0, 2*pi))` 现在接受数值向量（读作角度
+范围），否则手搭图层要自己构造 `list(theta = )`。
 
 ---
 

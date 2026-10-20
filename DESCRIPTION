@@ -13,6 +13,8 @@ Description: Build chord diagrams, circular tracks and genome-scale link
     data, so every layer is an ordinary 'ggplot2' layer and scales, facets
     and themes work as usual.
 License: GPL-3
+URL: https://yulab-smu.github.io/ggcircos
+BugReports: https://github.com/YuLab-SMU/ggcircos/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Imports:
