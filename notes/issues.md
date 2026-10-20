@@ -489,6 +489,29 @@ circos_layout(data.frame(from="a1", to="a2"), nodes=data.frame(id=c("a1","a2")),
 
 回归测试并入 `test-tracks-and-contract.R` 的轴测试。
 
+### B31. `stack = TRUE` 吞负值 + `value` 无法送达 position —— **已修（2026-10-20，审核 R4）**
+
+两层原因：
+
+1. `track_angles()` 写 `data$x <- 0` 当占位符。**data 里叫 `x` 的列会盖过 `aes(x = v)`**，
+   position 收到的 `x` 恒为 0，`stack` 的负值守卫（写在 `track_map_values()` 里、本身是对的）
+   永远看不到负值。
+2. 想用 `geom_track(value = v)` 绕开，也走不通：**ggplot2 只把 aesthetics 传给 position**，
+   额外的数据列根本到不了 `compute_panel()`；而 `GeomRect$setup_data` 会从 `xmin/xmax`
+   反推 `x`，进一步把它变成常量。
+
+修法（不再依赖 aesthetics 传值）：
+- `geom_track(value = )` 把值列**存到 position 对象上**（`position$values`，普通数值向量，
+  符合 spec §8.2"position 只持向量"），`PositionTrack$compute_panel()` 直接用它；
+- `x` 仍要有映射（GeomRect 需要），但映射到一个**不叫 `x` 的列**；用户的数据列真叫 `x` 时，
+  先改名为 `.circos_value` 再映射；
+- `track_angles()` 只在两者都没有时才写占位符。
+
+结果：`value =` 与 `aes(x = )` 产出完全相同的几何；负值 `stack` 报
+`ggcircos_error_data`（"stack = TRUE needs non-negative values, found -1"）；
+数据里存在 `x` 列时不再被吞。
+回归测试：`"geom_track(value = ) reaches the position and guards stacking (R4)"`（四条断言）。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

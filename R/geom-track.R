@@ -13,6 +13,11 @@
 #'   `"text"`. The last three sit at the band's centre when no `x` is mapped;
 #'   with an `x` they land at the scaled value, the way a bar's outer edge does.
 #' @param node Unquoted name of the column holding node ids. Required.
+#' @param value Unquoted name of the column holding the values to plot, e.g.
+#'   `value = gc`. Optional (`aes(x = gc)` also works), but it is the robust
+#'   spelling: `value` is handed to the position directly, so it keeps working
+#'   when the data has a column literally called `x` and it makes `stack`
+#'   able to reject negative input instead of silently drawing a flat track.
 #' @param band Either a declared track name (see the `tracks` argument of
 #'   [ggcircos()]) or an explicit `c(r0, r1)` radius interval.
 #' @param stack Stack values within each node instead of scaling them
@@ -58,6 +63,7 @@ geom_track <- function(mapping = NULL,
                        ...,
                        geom = "col",
                        node = NULL,
+                       value = NULL,
                        band,
                        stack = FALSE,
                        scales = c("free", "fixed"),
@@ -88,6 +94,44 @@ geom_track <- function(mapping = NULL,
         )
     }
     node_quo <- rlang::enquo(node)
+    # `value = column` is the explicit way to hand the position its numbers;
+    # `ggplot_add` resolves it against the layer's own data (the layer data is
+    # built there, after anything the caller passed). `aes(x = column)` also
+    # works, but ggplot2 resolves aesthetics before the position runs and a
+    # data column literally named `x` replaces the mapped value with a
+    # constant -- the bug that silently zeroed every row and hid the
+    # negative-input check (review R4).
+    value_name <- NULL
+    value_quo <- rlang::enquo(value)
+    if (!rlang::quo_is_null(value_quo)) {
+        value_col <- column_or_string(value_quo, "value")
+        if (!value_col %in% names(data)) {
+            ggcircos_abort(
+                "data",
+                c("{.arg value} refers to {.field {value_col}}, which the track data does not have.",
+                  i = "Available: {.val {names(data)}}.")
+            )
+        }
+        # Keep the value under a name that cannot be confused with `x`, and
+        # map through `.data` so the layer data stays the single source.
+        if (identical(value_col, "x")) {
+            data$.circos_value <- data$x
+            data$x <- NULL
+            value_col <- ".circos_value"
+        }
+        # `x` still needs a mapping (GeomRect derives xmin/xmax from it), but
+        # it must point at a column that is NOT called `x`: a data column
+        # literally named `x` wins over the mapping and zeroes every value.
+        if (identical(value_col, "x")) {
+            data$.circos_value <- data$x
+            data$x <- NULL
+            value_col <- ".circos_value"
+        }
+        data <- structure(data, circos_has_value = TRUE)
+        value_name <- value_col
+        mapping <- if (is.null(mapping)) ggplot2::aes() else mapping
+        mapping$x <- rlang::sym(value_col)
+    }
     if (is.null(position)) {
         node_col <- column_or_string(node_quo, "node")
         position <- position_track(
@@ -134,7 +178,8 @@ geom_track <- function(mapping = NULL,
         "ggcircos_track",
         list(band = position$band, band_name = position$band_name,
              geom_name = geom, anchored = spec$anchored,
-             node = node_col, width = position$width)
+             node = node_col, width = position$width,
+             value_name = value_name)
     )
 }
 
@@ -215,7 +260,14 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", ...) {
     theta <- nt$theta[idx]
     data$.circos_theta <- theta
     data$.circos_arc <- arc
-    if (!"x" %in% names(data)) data$x <- 0  # placeholder; the position owns it
+    # A placeholder only when the caller did not supply the value column.
+    # A data column named `x` overrides the layer's mapping and turns every
+    # value into 0 -- the bug that hid the negative-input check (review R4).
+    # `geom_track(value = )` marks the layer with `.circos_has_value`, which
+    # survives to here because `data` is the layer's own frame.
+    if (!"x" %in% names(data) && !isTRUE(attr(data, "circos_has_value"))) {
+        data$x <- 0  # placeholder; the position owns it
+    }
     data$y <- theta
     if (identical(geom, "tile")) {
         # A tile track is a *sequence of bins* along the node's arc: rows that
@@ -367,6 +419,13 @@ PositionTrack <- ggproto("PositionTrack", Position,
             as.character(data[[self$node]])
         } else {
             rep("all", nrow(data))
+        }
+        # `geom_track(value = )` stashes the numbers on the position itself:
+        # ggplot2 hands the position only the mapped aesthetics, and a data
+        # column named `x` (or GeomRect's own xmin/xmax derivation) can have
+        # replaced `x` with a constant by then (review R4).
+        if (!is.null(self$values) && length(self$values) == nrow(data)) {
+            data$x <- self$values
         }
         track_map_values(
             data, r0, r1, self,

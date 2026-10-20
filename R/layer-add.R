@@ -300,6 +300,14 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     object$mapping <- merge_mapping(
         object$mapping, track_defaults(spec$rect)
     )
+    # `geom_track(value = )` hands the numbers to the position directly. The
+    # alternative -- mapping `x` -- cannot work: ggplot2 resolves aesthetics
+    # before the position runs and GeomRect's setup_data derives `x` from
+    # xmin/xmax, so the position only ever saw 0 (review R4). The vector is a
+    # plain snapshot, in layer-data order.
+    if (!is.null(params$value_name)) {
+        object$position$values <- as.numeric(object$data[[params$value_name]])
+    }
     # the position keeps only the resolved numeric band (a plain vector); the
     # layout itself never travels into it (spec §8.2). A position that came
     # in with a numeric band already carries it, so it is not touched — a

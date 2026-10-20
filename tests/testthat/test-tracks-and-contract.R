@@ -430,3 +430,41 @@ test_that("both edges of a ribbon are the same curve entered from opposite ends 
         expect_lt(abs(d), pi + 1e-9)
     }
 })
+
+test_that("geom_track(value = ) reaches the position and guards stacking (R4)", {
+    m <- cor(mtcars)
+    base <- function() ggcircos(m, tracks = c(v = 0.2))
+    ok <- data.frame(id = colnames(m), v = seq(0.1, 1, length.out = 11))
+
+    # `value =` and `aes(x = )` must produce identical geometry
+    by_value <- ggplot2::ggplot_build(
+        base() + geom_track(data = ok, value = v, node = id, band = "v")
+    )$data[[1]]
+    by_aes <- ggplot2::ggplot_build(
+        base() + geom_track(data = ok, aes(x = v), node = id, band = "v")
+    )$data[[1]]
+    expect_equal(by_value$x, by_aes$x)
+
+    # a negative stack is an error, not a silent flat track
+    neg <- data.frame(id = rep(colnames(m), 2), v = c(rep(-1, 11), rep(1, 11)))
+    expect_error(
+        ggplot2::ggplot_build(
+            base() + geom_track(data = neg, value = v, node = id,
+                                band = "v", stack = TRUE)
+        ),
+        class = "ggcircos_error_data"
+    )
+
+    # a data column that happens to be called `x` must not shadow the value
+    shadow <- data.frame(id = colnames(m), x = seq(0.1, 1, length.out = 11))
+    got <- ggplot2::ggplot_build(
+        base() + geom_track(data = shadow, value = x, node = id, band = "v")
+    )$data[[1]]
+    expect_gt(length(unique(round(got$x, 6))), 1L)
+
+    # and `value` must name a real column
+    expect_error(
+        base() + geom_track(data = ok, value = nope, node = id, band = "v"),
+        class = "ggcircos_error_data"
+    )
+})

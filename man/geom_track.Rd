@@ -10,6 +10,7 @@ geom_track(
   ...,
   geom = "col",
   node = NULL,
+  value = NULL,
   band,
   stack = FALSE,
   scales = c("free", "fixed"),
@@ -32,6 +33,12 @@ band's inner edge), \code{"area"}, \code{"boxplot"}, \code{"point"}, \code{"tile
 with an \code{x} they land at the scaled value, the way a bar's outer edge does.}
 
 \item{node}{Unquoted name of the column holding node ids. Required.}
+
+\item{value}{Unquoted name of the column holding the values to plot, e.g.
+\code{value = gc}. Optional (\code{aes(x = gc)} also works), but it is the robust
+spelling: \code{value} is handed to the position directly, so it keeps working
+when the data has a column literally called \code{x} and it makes \code{stack}
+able to reject negative input instead of silently drawing a flat track.}
 
 \item{band}{Either a declared track name (see the \code{tracks} argument of
 \code{\link[=ggcircos]{ggcircos()}}) or an explicit \code{c(r0, r1)} radius interval.}
