@@ -336,3 +336,28 @@ test_that("the linear layout keeps every chord inside the panel (R16)", {
     expect_true(all(abs(ends$y0 - b$data[[1]]$y) < 1e-9))
     expect_true(all(abs(ends$y1 - b$data[[1]]$yend) < 1e-9))
 })
+
+test_that("the linear layout draws arcs at 1:1 units, not stretched loops (R17)", {
+    nodes <- data.frame(id = paste0("n", 1:6), stringsAsFactors = FALSE)
+    links <- data.frame(
+        from = paste0("n", 1:6), to = paste0("n", c(4, 5, 6, 1, 2, 3)),
+        stringsAsFactors = FALSE
+    )
+    p <- ggcircos(links, nodes = nodes, layout = "arc") + geom_chord(type = "line")
+    b <- ggplot2::ggplot_build(p)
+    pp <- b$layout$panel_params[[1]]
+    # the coordinate fixes the aspect, so one radius unit is one radian on
+    # screen; `aspect()` reports height/width, i.e. the two ranges' ratio
+    expect_equal(
+        b$layout$coord$aspect(pp),
+        diff(pp$y.range) / diff(pp$x.range)
+    )
+
+    # a chord spanning half a turn bulges 0.4 radius units, no more: the depth
+    # is a fraction of the span, so arcs stay arcs instead of tall loops
+    paths <- ggcircos:::chord_paths_cartesian(b$data[[1]], "line", NA, 40)
+    depth <- vapply(split(paths, paths$.id), function(q) -min(q$x), numeric(1))
+    span <- vapply(split(paths, paths$.id), function(q) abs(diff(range(q$y))), numeric(1))
+    ratio <- depth / span
+    expect_true(all(ratio > 0.1 & ratio < 0.2))
+})

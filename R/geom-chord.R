@@ -327,11 +327,14 @@ bulge_radius <- function(d, curvature) {
 #' @keywords internal
 #' @noRd
 bulge_cart <- function(d, curvature) {
-    k <- if (is.na(curvature)) -(4 / (3 * pi)) * abs(d) else -(curvature / 3) * sign(d)
-    # shortcut: every chord deeper than a semicircle is drawn at the same
-    # depth, so very long links (|d| > 3*pi/4) coincide on the left edge.
-    # Upgrade by widening the arc layout's x range instead of capping (R16).
-    max(k, -4 / 3)
+    # The cubic's peak is 0.75 * |k|. The linear layout has no canonical
+    # depth (unlike the circle, where it falls out of the geometry), so pick
+    # one: a chord spanning a whole turn bulges 0.8 radius units, and shorter
+    # chords bulge proportionally. Two coupled decisions make the arcs read
+    # as arcs rather than tall loops -- this depth, and `coord_arc()`'s
+    # `ratio = 1` so one radius unit is one radian on screen (R17).
+    if (is.na(curvature)) -(0.8 / 0.75) * abs(d) / (2 * pi)
+    else -(curvature / 3) * sign(d)
 }
 
 #' Radius along a cubic bezier whose control radii are both `k`.

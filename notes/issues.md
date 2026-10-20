@@ -338,6 +338,20 @@ circos_layout(lk, nodes = nodes, sectors = "genome", order = "hclust")
 
 回归测试：`"the linear layout keeps every chord inside the panel (R16)"`。
 
+**同一处的第二个问题（审核 R17）**：修掉出界后图**仍然不对**——每条弦被拉成细长的 U 形。
+根因不在路径而在坐标：`coord_arc()` 用 `CoordCartesian`，x、y 单位长度不等，
+面板里 1 个半径单位 ≈ 4.8 个弧度的像素（y 轴跨整圈，x 轴只有约 1.3），
+所以"深 1.0、跨 π"的弧在屏幕上是"宽 0.76W、高 0.5W"的胖 U。
+
+修法两条（缺一不可，已写进 spec §5.2）：
+1. `CoordArc` 改继承 `CoordFixed`、`ratio = 1`——半径单位必须等于角度单位；
+2. `bulge_cart()` 的深度改按跨度定：跨整圈的弦鼓 0.8 个半径单位、短弦按比例
+   （直线布局没有"几何决定的"深度，这是个设计常量）。
+
+代价：角度轴占整圈 + 1:1 单位 → 线性布局要**偏高的画布**（约 1:2 或更窄）；
+方形画布下 panel 会是一条窄柱。已写进 `coord_arc()` 的 `@details`。
+回归测试：`"the linear layout draws arcs at 1:1 units, not stretched loops (R17)"`。
+
 ---
 
 ## C 类：测试与工程（不阻塞，但要有）

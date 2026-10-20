@@ -24,6 +24,13 @@
 #' @param r.axis Draw the radial axis. `FALSE` by default: a radius has no
 #'   physical meaning here.
 #' @param xlim,ylim Panel ranges for `coord_arc()`.
+#'
+#' @details `coord_arc()` locks the radius unit to the angle unit
+#'   (`ratio = 1`), because the linear layout has no circle to borrow a scale
+#'   from: without it a chord spanning half a turn is drawn as a tall loop
+#'   instead of an arc. The angle axis covers a whole turn, so this layout
+#'   wants a **tall** device (roughly 1:2 or narrower); in a square device
+#'   the panel becomes a narrow column.
 #' @param direction Rejected on purpose: the `coord_polar()` spelling for
 #'   `clockwise`. Present in the signature so that old code gets a classed
 #'   error instead of "unused argument".
@@ -117,7 +124,11 @@ coord_arc <- function(xlim = c(-1, 1),
         xlim = xlim,
         ylim = ylim,
         expand = expand,
-        clip = clip
+        clip = clip,
+        # one unit of radius must be one unit of angle, or a chord is drawn
+        # as a vertically stretched loop instead of an arc: the y axis spans
+        # a whole turn while x spans about one radius (R17)
+        ratio = 1
     )
 }
 
@@ -199,7 +210,7 @@ empty_axis <- function() {
 #' @usage NULL
 #' @importFrom ggplot2 CoordCartesian ggproto
 #' @export
-CoordArc <- ggproto("CoordArc", CoordCartesian,
+CoordArc <- ggproto("CoordArc", ggplot2::CoordFixed,
     is_linear = function() TRUE,
     screen_angle = function(self, panel_params, theta) {
         rep(0, length(theta))
