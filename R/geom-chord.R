@@ -57,7 +57,9 @@ geom_chord <- function(mapping = NULL,
                        inherit.aes = TRUE) {
     type <- match.arg(type)
     if (identical(curvature, "auto")) curvature <- NA_real_
-    if (is.na(curvature)) alpha <- alpha %||% if (type == "ribbon") 0.5 else 0.9
+    # the default must be set whatever the curvature is: handing a NULL
+    # alpha to the layer makes ggplot2 warn about an empty aesthetic
+    alpha <- alpha %||% if (type == "ribbon") 0.5 else 0.9
     linewidth <- linewidth %||% if (type == "ribbon") 0.1 else 0.3
     tag_layer(
         layer(
@@ -316,11 +318,18 @@ chord_paths_cartesian <- function(data, type, curvature, ncp) {
 #' @keywords internal
 #' @noRd
 bulge_radius <- function(d, curvature) {
-    if (is.na(curvature)) {
+    k <- if (is.na(curvature)) {
         1 - 4 * abs(d) / (3 * pi)
     } else {
         -(curvature / 3) * sign(d)
     }
+    # The control points sit on the *rays* of the two ends, so a negative
+    # radius puts one control on the far side of the centre. The control
+    # polygon then stops being monotone (1, -1/3, +1/3, -1 at |d| = pi) and
+    # the curve runs back on itself: the ribbon folds over in the middle.
+    # Clamping at 0 keeps the polygon monotone, and a link spanning half a
+    # turn is drawn as a smooth curve through the centre (review R19).
+    pmax(k, 0)
 }
 
 #' Control point for the linear layout: an absolute distance left of the spine.

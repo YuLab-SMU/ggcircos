@@ -361,3 +361,26 @@ test_that("the linear layout draws arcs at 1:1 units, not stretched loops (R17)"
     ratio <- depth / span
     expect_true(all(ratio > 0.1 & ratio < 0.2))
 })
+
+test_that("no chord folds over the centre (R19)", {
+    # a link spanning half a turn used to get a *negative* control radius, which
+    # puts a control point on the far side of the centre: the control polygon
+    # stops being monotone and the ribbon runs back on itself in the middle
+    m <- cor(mtcars)
+    p <- ggcircos(m, order = "hclust") + geom_chord()
+    b <- ggplot2::ggplot_build(p)
+    paths <- ggcircos:::chord_paths_polar(b$data[[1]], "ribbon", NA, 40)
+
+    # every path stays at or outside the centre: a convex combination of
+    # non-negative control radii cannot dip below zero
+    expect_true(all(paths$x >= -1e-12))
+    # and the deepest a chord may reach is the centre, never past it
+    expect_true(min(paths$x) >= 0)
+
+    # the same for an explicit curvature (curvature = 1 asks for the centre)
+    b2 <- ggplot2::ggplot_build(
+        ggcircos(m) + geom_chord(curvature = 1)
+    )
+    paths2 <- ggcircos:::chord_paths_polar(b2$data[[1]], "ribbon", 1, 40)
+    expect_true(all(paths2$x >= -1e-12))
+})
