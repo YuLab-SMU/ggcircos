@@ -6,6 +6,15 @@
 ## 构建与验证（本机固定流程）
 
 - 走 `Makefile`：`make check1` = `rd`（document）+ `build1`（含 vignette）+ `rcmdcheck`。
+- **日常改动别走 `make check1`，直接跑测试目录**（实测 2026-10-21：`load_all` +
+  `test_dir` 全套 ≈ **15 秒**，而 `check1` 要打包 + 装包 + 查文档，分钟级）：
+
+  ```bash
+  NOT_CRAN=true Rscript -e 'suppressMessages(pkgload::load_all(".", quiet=TRUE)); \
+    testthat::test_dir("tests/testthat", reporter="summary", stop_on_failure=FALSE)'
+  ```
+
+  `check1` 只在一个改动收口、或动了 `man/`、`DESCRIPTION`、vignette 时才跑。
 - 本机无 `pdflatex`：`make check1` 固定出现 PDF manual 1 ERROR + 1 WARNING，属环境缺失。
   **判断包是否干净用 `--no-manual`**：
   `Rscript -e 'rcmdcheck::rcmdcheck("../ggcircos_0.1.0.tar.gz", args="--no-manual")'`，
