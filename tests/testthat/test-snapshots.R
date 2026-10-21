@@ -79,13 +79,14 @@ test_that("baseline visuals do not drift", {
     links4 <- data.frame(
         from = c("g4", "g5", "g1", "g8"),
         to = c("g7", "g2", "g6", "g3"),
-        genome = c("ref->qry", "qry->ref", "ref->qry", "qry->ref"),
+        # circlize colours a link by the genome it leaves from
+        genome = c("ref", "qry", "ref", "qry"),
         stringsAsFactors = FALSE
     )
     expect_doppelganger("sectors and sector labels", {
         ggcircos(
             links4, nodes = nodes4, sectors = "genome",
-            gap = 0.004, sector_gap = 0.12
+            gap = 0.005, sector_gap = 0.03
         ) +
             geom_chord(aes(fill = genome), alpha = 0.45) +
             geom_node_arc(aes(fill = genome), width = 0.05) +

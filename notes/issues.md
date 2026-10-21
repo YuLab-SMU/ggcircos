@@ -505,14 +505,116 @@ circos_layout(data.frame(from="a1", to="a2"), nodes=data.frame(id=c("a1","a2")),
   符合 spec §8.2"position 只持向量"），`PositionTrack$compute_panel()` 直接用它；
 - `x` 仍要有映射（GeomRect 需要），但映射到一个**不叫 `x` 的列**；用户的数据列真叫 `x` 时，
   先改名为 `.circos_value` 再映射；
-- `track_angles()` 只在两者都没有时才写占位符。
+- `track_angles()` 用保留在 layer data 里的 `.circos_has_value` 列判断是否需要占位符，
+  不再依赖会在后续步骤丢失的 data-frame attribute；
+- `ggcircos()` 的 `scale_x_continuous()` 改用 `scales::oob_keep`，避免 track 原始值在进入
+  `PositionTrack` 之前被 plot 的半径上限先行 squish。
 
 结果：`value =` 与 `aes(x = )` 产出完全相同的几何；负值 `stack` 报
 `ggcircos_error_data`（"stack = TRUE needs non-negative values, found -1"）；
 数据里存在 `x` 列时不再被吞。
 回归测试：`"geom_track(value = ) reaches the position and guards stacking (R4)"`（四条断言）。
 
+### B32. `scales = "free"` 被全局归一化而非按节点 —— **已修（2026-10-20，审核 R3）**
+
+position 收到的 ggplot2 数据不再包含原始 `node` 列，原实现因此把所有行当成一个组；节点间量级相差较大时，小量级节点几乎缩成零宽。
+
+修法：在 `ggplot_add()` 阶段将节点 id 与 `track_angles()` 计算出的节点角度作为 position 向量快照；`compute_panel()` 按仍保留的 `y` 角度把行关联回节点，再独立计算每节点范围。这样不依赖已被 ggplot2 丢弃的任意列。
+
+回归测试：`"free track scales are normalised independently per node (R3)"`，两节点分别取值 1–2 和 50–100，断言两组都到达各自 band 外沿。
+
+### B33. sector 只有一处宽缝，两个 sector 读作一整圈 —— **已修（2026-10-20，视觉对照 circlize）**
+
+`circos_layout_build()` 按 `S-1` 处 sector 缝做预算，且 wrap 边界（最后一个节点 → 第一个节点）
+被硬编码成普通缝。两个 sector 的图因此只剩**一处**宽缝：两段弧在另一处几乎接上，
+整圈看起来是一个环被咬掉一口，而不是两个独立的块。
+
+对照 circlize：`circos.par(gap.after = c(..., 30, ..., 30))` 在**每个 sector 的两端**都留宽缝，
+这是它表达"块"的标准做法（截图对比见本轮验证）。
+
+修法：
+- 边界改为环形判定：`boundary <- c(sector[-1] != sector[-n], sector[1] != sector[n])`；
+- 预算与 `span` 按 `S` 处缝（`S ≤ 1` 时为 0）：`span = 2π - N*G - S*SG`；
+- `sector_gap` 的 20% 收窄改为 `0.2 / max(S, 1)`，保证 `S*SG ≤ 0.2`；
+- `check_layout_invariants()` 的期望缝同步，wrap 那处也是 `G + SG`。
+
+回归测试：`"a sector is a closed block: both of its ends get a seam (B33)"`
+（两处 `G + SG`、其余 `G`、环仍精确闭合）。
+
+### B34. 飘带几何反复修不好 → 改为直接移植 circlize —— **已修（2026-10-21）**
+
+这条记的是**一次失败的过程**，因为反复返工的根因值得记住。
+
+先后试过四种自研几何，每种都"看着差不多"，但都不是 circlize 的形状：
+
+| 尝试 | 做法 | 结果 |
+|---|---|---|
+| 1 | 单脊线 + **角度**偏移 | 脊线俯冲时角宽不变，物理宽度 0.32 → 0.08，收成针尖 |
+| 2 | 单脊线 + **平面**偏移 | 宽度恒定了，但多条带在中心堆叠挤压 |
+| 3 | 两条边 `a0→b0` / `a1→b1` | 脚对了，飘带在中心交叉成蝴蝶结 |
+| 4 | 两条边 + 残差折叠 | 部分对，55 条里仍有 2 条反向 |
+
+**根因（两条，都是最后才看准的）**：
+
+1. **配对方式**。circlize 的两条边是**交叉配对**：`d1 = (θ11 → θ22)`、
+   `d2 = (θ12 → θ21)`，不是我按"同侧角"理解的 `a0→b0` / `a1→b1`。
+   用错配对时多边形面积是 5.98（≈ 整个圆盘 2π），正确的应该是 0.24（量级差 25 倍）。
+   这个错误很隐蔽：脚的位置、两端半径都对，只有"中间围出来的面积"错。
+2. **闭合弧的方向**。`arc.points()` 走的是 `(t2-t1) %% 360`，即**可能绕长路**；
+   我一度"修正"成短弧，反而与 circlize 不一致。而脚只需要短弧 ——
+   正确的做法是：配对用 circlize 的交叉方式，闭合弧取短向（只覆盖脚自身宽度）。
+
+**最终做法：直接移植，不再自研。**
+
+- `chord_bezier()`：`circlize:::getQuadraticPoints()` 的逐行移植
+  （带权二次贝塞尔 + 自适应采样 + 角度旋转），与原件逐点误差 **1.4e-15**；
+- `chord_arc()`：`arc.points()` 的移植，但闭合弧取短向；
+- `chord_ribbon_outline()`：按 `circos.link()` 的分支做交叉配对，
+  多边形 `d1 → arc2 → rev(d2) → arc1`；
+- `chord_paths_polar()` 改为调用上述函数，旧的极坐标近似全部删除。
+
+顺带修掉的两个显式缺陷：
+
+- **黑色描边**：`GeomChord$default_aes` 的 `colour = "black"` 对所有 type 生效，
+  而 spec §6.1 写明 ribbon 描边默认 `NA`（circlize 的 `link.border = NA`）；
+- **节点环白缝**：`geom_node_arc()` 默认 `offset = 0.01` 把环推到 `[1.01,1.05]`，
+  与 `r = 1` 的飘带脚之间空出 0.01。改为 `0`。
+
+**这一步的教训**：判断"像不像"不能靠看一眼，要找一个**可量化的判据**。
+有效的判据是**多边形面积**（错误配对 5.98 vs 正确 0.24）和
+**逐点比对 circlize 原件**（1e-15）。
+
+回归测试：
+- `"a ribbon outline is a closed band, ported from circlize (B34)"`
+  （闭合、不出环、无整圈尖峰、有面积但不是整盘）；
+- `"a ribbon covers a band's worth of area, not the whole disc (B34)"`
+  （面积量级：全部 `< 0.5π`，中位数 `< 0.3`）。
+
+
 ---
+
+### B35. 飘带交叉处被挖成白色空洞 —— **已修（2026-10-21）**
+
+两个 sector 那张图中间有一块白，看上去像"重叠的部分变白了"。
+
+根因：`draw_panel()` 为了减少 grob 数量，把**同样式**的多条飘带合并进一个
+`grid.path()`（B11 的优化）。`grid.path()` 必须选一个填充规则，两个都不对：
+
+- `"evenodd"`（当时用的）：重叠区被数到**两次**，按偶数挖空 —— 交叉处直接变白；
+- `"winding"`：重叠区填了，但**自交**的飘带会被抵消掉。
+
+circlize 是每条 link 单独 `polygon()`，重叠处按 alpha 叠加，所以从来不会有这个洞。
+
+修法：改成**每条 link 一个 grob**，各自的 alpha 独立混合，与 circlize 同语义。
+代价是 grob 数量回到 O(link 数)，这对 grid 是常态（`geom_polygon()` 也一样）。
+
+**这一步顺带推翻了 B11 的优化前提**：B11 当年为了"连续填充不炸成一条一 grob"
+把多条合并成一条路径 —— 那个优化和正确渲染互斥。原来的测试
+`"continuous fill does not explode into one grob per link (B11)"` 断言合并后的
+数量上限，现已替换为 `"overlapping ribbons blend instead of punching a white hole (B35)"`
+（断言 grob 数 == link 数，即每条 link 独立绘制）。
+
+回归测试：`"overlapping ribbons blend instead of punching a white hole (B35)"`。
 
 ## C 类：测试与工程（不阻塞，但要有）
 

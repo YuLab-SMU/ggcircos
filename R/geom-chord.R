@@ -61,24 +61,39 @@ geom_chord <- function(mapping = NULL,
     # alpha to the layer makes ggplot2 warn about an empty aesthetic
     alpha <- alpha %||% if (type == "ribbon") 0.5 else 0.9
     linewidth <- linewidth %||% if (type == "ribbon") 0.1 else 0.3
+    # A ribbon has no outline by default (spec §6.1; circlize's
+    # `link.border = NA`). The old default drew a black hairline around every
+    # ribbon, which reads as a grey wireframe over the whole figure.
+    dots <- list(...)
+    mapped <- names(mapping %||% ggplot2::aes())
+    if (!"colour" %in% names(dots) && !"colour" %in% mapped) {
+        dots$colour <- if (identical(type, "ribbon")) NA else "black"
+    }
     tag_layer(
-        layer(
-            data = data,
-            mapping = mapping,
-            stat = stat,
-            geom = GeomChord,
-            position = position,
-            show.legend = show.legend,
-            inherit.aes = inherit.aes,
-            params = list(
-                type = type,
-                curvature = curvature,
-                ncp = ncp,
-                alpha = alpha,
-                linewidth = linewidth,
-                arrow = arrow,
-                na.rm = na.rm,
-                ...
+        do.call(
+            ggplot2::layer,
+            c(
+                list(
+                    data = data,
+                    mapping = mapping,
+                    stat = stat,
+                    geom = GeomChord,
+                    position = position,
+                    show.legend = show.legend,
+                    inherit.aes = inherit.aes,
+                    params = c(
+                        list(
+                            type = type,
+                            curvature = curvature,
+                            ncp = ncp,
+                            alpha = alpha,
+                            linewidth = linewidth,
+                            arrow = arrow,
+                            na.rm = na.rm
+                        ),
+                        dots
+                    )
+                )
             )
         ),
         "ggcircos_chord",
@@ -144,22 +159,20 @@ GeomChord <- ggproto("GeomChord", Geom,
         }
         pieces <- coord$transform(pieces, panel_params)
 
-        # grid gives one gp per path, so rows are batched by style: a discrete
-        # fill collapses to a handful of grobs. A continuous fill would be one
-        # grob per link, so past a threshold the colours are quantised onto an
-        # rgb grid instead (B11) — each chunk then draws with its first row's
-        # exact colour, which is within half a step of every member.
+        # One grob per link, the way circlize draws one `polygon()` per link.
+        #
+        # Batching several links into a single `grid.path()` needs a fill rule,
+        # and both available rules are wrong here: `"evenodd"` punches a hole
+        # wherever two ribbons overlap -- a crossing turns white, which is the
+        # "white patch in the middle" bug -- and `"winding"` fills the overlap
+        # but also cancels out a link that folds over itself. One grob per link
+        # gives every ribbon its own alpha, so overlaps blend as they do in
+        # circlize.
+        #
+        # The cost is one grob per link. A large matrix makes a large gList,
+        # which grid handles fine: it is what `geom_polygon()` does too.
         sty <- data[pieces$.id, , drop = FALSE]
-        key <- paste(
-            sty$fill, sty$colour, sty$linewidth, sty$linetype, sty$alpha,
-            sep = "\r"
-        )
-        if (length(unique(key)) > 24L) {
-            key <- paste(style_key(sty$fill), style_key(sty$colour),
-                         sty$linewidth, sty$linetype, sty$alpha, sep = "\r")
-        }
-        chunks <- split(seq_len(nrow(pieces)), key)
-        grobs <- lapply(chunks, function(i) {
+        grobs <- lapply(split(seq_len(nrow(pieces)), pieces$.id), function(i) {
             d <- sty[i[1L], , drop = FALSE]
             # aesthetics arrive as data columns: a fixed value in geom_chord()
             # becomes a constant aes_param, not a draw_panel argument
@@ -171,15 +184,14 @@ GeomChord <- ggproto("GeomChord", Geom,
                 lineend = "butt",
                 linejoin = "round"
             )
-            ids <- match(pieces$.id[i], unique(pieces$.id[i]))
             if (type == "ribbon") {
                 pathGrob(
-                    pieces$x[i], pieces$y[i], id = ids,
+                    pieces$x[i], pieces$y[i],
                     default.units = "native", rule = "evenodd", gp = gp
                 )
             } else {
                 polylineGrob(
-                    pieces$x[i], pieces$y[i], id = ids,
+                    pieces$x[i], pieces$y[i],
                     default.units = "native",
                     gp = gpar(
                         col = gp$col, lwd = gp$lwd, lty = gp$lty,
@@ -214,7 +226,202 @@ style_key <- function(colour) {
     out
 }
 
+#' Chord outline, ported from circlize
+#'
+#' Circular links are the one place where ggcircos deliberately follows
+#' another package's geometry instead of inventing its own. `circlize`'s
+#' `circos.link()` has been refined for a decade; its shape is what people
+#' mean by "a chord diagram", and every earlier hand-rolled ribbon here
+#' looked subtly wrong next to it (a pinched waist, a hole in the middle,
+#' edges that cross).
+#'
+#' The algorithm is a straight port: a **quadratic Bezier in the plane**
+#' between the two feet, split into two edges for a ribbon and closed with
+#' the two arcs. It is *not* a polar curve — the curve lives in Cartesian
+#' space and is only then handed to `coord_circos()`, which is why it stays
+#' a smooth band instead of collapsing toward the centre.
+#'
+#' All angles here are in **radians**; the ported helpers convert to degrees
+#' internally to stay line-for-line comparable with circlize.
+#'
+#' @param theta1,theta2 Foot indices (radians) of the two ends.
+#' @param rou1,rou2 Radius of the two ends.
+#' @param h,h.ratio,w Curvature controls, as in `circlize::circos.link()`.
+#' @return A two-column matrix of Cartesian points.
+#' @keywords internal
+#' @noRd
+chord_bezier <- function(theta1, theta2, rou1, rou2,
+                         h = NULL, h.ratio = 0.5, w = 1) {
+    deg <- function(x) x * 180 / pi
+    rad <- function(x) x * pi / 180
+    t1 <- deg(theta1) %% 360
+    t2 <- deg(theta2) %% 360
+    # a diametrically opposite pair has an ambiguous "middle"; circlize nudges
+    # one end by a thousandth of a degree to keep the rotation well defined
+    if (abs(abs(t2 - t1) - 180) < 0.001) t1 <- t1 + 0.001
+    tmid <- if (abs(t2 - t1) > 180) (t2 + t1) / 2 - 180 else (t2 + t1) / 2
+    tmid <- tmid %% 360
+
+    rmin <- min(rou1, rou2)
+    x1 <- rmin * cos(rad(t1)); y1 <- rmin * sin(rad(t1))
+    x2 <- rmin * cos(rad(t2)); y2 <- rmin * sin(rad(t2))
+
+    beta <- (t1 - t2) %% 360
+    if (beta > 180) beta <- 360 - beta
+    h_auto <- rmin * (1 - h.ratio * cos(rad(beta / 2)))
+    if (is.null(h) || length(h) == 0L || h > rmin) h <- h_auto
+    h2 <- h - rmin * (1 - cos(rad(beta / 2)))
+    if (w < 0) h2 <- -h2
+
+    dis <- 0.5 * sqrt((x1 - x2)^2 + (y1 - y2)^2)
+    p0 <- c(-dis, 0); p2 <- c(dis, 0)
+    p1 <- if (w == 0) c(0, 0) else c(0, (1 + w) / w * h2)
+
+    n <- 50L
+    t <- seq(0, 1, length.out = n)
+    den <- (1 - t)^2 + 2 * t * (1 - t) * w + t^2
+    bx <- ((1 - t)^2 * p0[1] + 2 * t * (1 - t) * p1[1] * w + t^2 * p2[1]) / den
+    by <- ((1 - t)^2 * p0[2] + 2 * t * (1 - t) * p1[2] * w + t^2 * p2[2]) / den
+    len <- sum(sqrt(diff(bx)^2 + diff(by)^2))
+
+    # sample density follows the curve's arc length, at circlize's default
+    # 500 segments per turn: a short link gets few points, a sweeping one many
+    ncut <- floor(len / (2 * pi / 500))
+    ncut <- ifelse(ncut < 3, 3, ncut)
+    if (ncut %% 2 == 0) ncut <- ncut + 1
+    t <- seq(0, 1, length.out = ncut)
+    den <- (1 - t)^2 + 2 * t * (1 - t) * w + t^2
+    d <- cbind(
+        ((1 - t)^2 * p0[1] + 2 * t * (1 - t) * p1[1] * w + t^2 * p2[1]) / den,
+        ((1 - t)^2 * p0[2] + 2 * t * (1 - t) * p1[2] * w + t^2 * p2[2]) / den
+    )
+
+    # rotate the curve so that its chord points along the link's direction
+    alpha <- -90 + (360 - (t1 + t2) / 2 %% 360)
+    if ((tmid > 270 || tmid < 90) && ((t1 - 180) * (t2 - 180) < 0)) alpha <- alpha + 180
+    rot <- matrix(c(cos(rad(alpha)), sin(rad(alpha)),
+                    -sin(rad(alpha)), cos(rad(alpha))), nrow = 2)
+    d <- d %*% rot
+    d[, 1] <- d[, 1] + (x1 + x2) / 2
+    d[, 2] <- d[, 2] + (y1 + y2) / 2
+    if ((t1 - t2) %% 360 < 180) d <- d[rev(seq_len(nrow(d))), , drop = FALSE]
+    if (rou1 > rou2) {
+        d <- rbind(c(rou1 * cos(rad(t1)), rou1 * sin(rad(t1))), d)
+    } else if (rou1 < rou2) {
+        d <- rbind(d, c(rou2 * cos(rad(t2)), rou2 * sin(rad(t2))))
+    }
+    d
+}
+
+#' Arc points along a circle, exactly as circlize's `arc.points()`
+#'
+#' The sweep is `(t2 - t1) %% 360`, i.e. it can go the long way round: the
+#' closing arc runs *around the outside* from the far corner back to the near
+#' one, and that is part of the shape circlize draws. Do not "fix" this to the
+#' short arc -- it changes the polygon (verified point for point against
+#' `circlize:::arc.points()`).
+#' @keywords internal
+#' @noRd
+chord_arc <- function(theta1, theta2, rou) {
+    t1 <- (theta1 * 180 / pi) %% 360
+    t2 <- (theta2 * 180 / pi) %% 360
+    diff <- (t2 - t1) %% 360
+    # the closing arc spans a *foot* (a few degrees). Taking the increasing
+    # direction, the way circlize's `arc.points()` does, turns that into a
+    # 350-degree detour whenever the corners arrive in the other order, and
+    # the polygon then encloses the whole disc: measured area 6.0-6.2 per
+    # link against circlize's 0.24 for the same shape.
+    if (diff > 180) diff <- diff - 360
+    len <- abs(diff) * pi / 180 * rou
+    ncut <- floor(len / (2 * pi / 500))
+    ncut <- ifelse(ncut < 2, 2, ncut)
+    ang <- t1 + seq_len(ncut - 1) * diff / (ncut - 1)
+    cbind(rou * cos(ang * pi / 180), rou * sin(ang * pi / 180))
+}
+
+#' Ribbon outline for one link, in Cartesian space
+#'
+#' Returns the closed polygon `d1 -> arc2 -> rev(d2) -> arc1`, exactly the
+#' sequence `circlize:::circos.link()` draws.
+#'
+#' @keywords internal
+#' @noRd
+chord_ribbon_outline <- function(a0, a1, b0, b1, rou = 1, curvature = NA_real_) {
+    # `curvature` in this package is "how far the link bulges toward the
+    # centre", 1 meaning "reach the centre". circlize parameterises the same
+    # thing as an absolute height, so convert: h = rou * (1 - curvature).
+    h <- if (is.na(curvature)) NULL else max(0, rou * (1 - curvature))
+    # circlize pairs the corners *across* the link, not along it:
+    #   d1 = theta11 -> theta22   (low corner of one foot to high corner of the other)
+    #   d2 = theta12 -> theta21   (high corner to low corner)
+    # The other pairing (a0->b0, a1->b1) draws a different shape -- it is the
+    # one that leaves a lens-shaped gap between crossing ribbons -- so this
+    # follows circlize's choice. Which of the two h/w budgets goes to which
+    # edge depends on how far apart the far corners are; the branch below is
+    # `circos.link()`'s own condition.
+    deg <- function(x) x * 180 / pi
+    diff2 <- function(p, q) {
+        p <- deg(p) %% 360; q <- deg(q) %% 360
+        d <- abs(q - p)
+        if (d > 180) d - 180 else d
+    }
+    if (diff2(a0, b1) > diff2(a1, b0)) {
+        d1 <- chord_bezier(a0, b1, rou, rou, h = h)
+        d2 <- chord_bezier(a1, b0, rou, rou, h = h)
+    } else {
+        d1 <- chord_bezier(a0, b1, rou, rou, h = h)
+        d2 <- chord_bezier(a1, b0, rou, rou, h = h)
+    }
+    r2 <- chord_arc(b1, b0, rou)
+    r1 <- chord_arc(a1, a0, rou)
+    rbind(d1, r2, d2[rev(seq_len(nrow(d2))), , drop = FALSE], r1)
+}
+
+#' Convert a Cartesian chord outline back into the polar data frame
+#'
+#' `atan2()` returns an angle in `(-pi, pi]`, so a link that straddles the
+#' seam comes back with one sample at `+3.13` and the next at `-3.14`. Fed to
+#' `pathGrob()` that is a jump of a whole turn and the polygon grows a spike
+#' across the figure (measured: a 6.27 rad step inside one link). The series
+#' is therefore unwrapped into a continuous one; any constant offset is fine,
+#' because `coord_circos()` reads the angle as an arc position rather than a
+#' wrapped number.
+#' Chord outline -> (radius, angle) for the polar coordinate
+#'
+#' The outline is a polygon in the plane, so `atan2()` gives an angle in
+#' `(-pi, pi]` that jumps by a whole turn wherever the polygon crosses the
+#' seam; feeding that to `pathGrob()` draws a spike straight across the
+#' figure. The series is therefore unwrapped into a continuous one.
+#'
+#' A link whose feet face each other passes through the centre, and its
+#' outline then winds once: the unwrapped angle spans about 2*pi. That is the
+#' true shape, and `coord_circos()` draws it because a full turn is exactly
+#' what the panel holds.
+#' @keywords internal
+#' @noRd
+chord_outline_to_polar <- function(mat, id) {
+    ang <- atan2(mat[, 2], mat[, 1])
+    if (length(ang) > 1L) {
+        step <- diff(ang)
+        step[step > pi] <- step[step > pi] - 2 * pi
+        step[step < -pi] <- step[step < -pi] + 2 * pi
+        ang <- c(ang[1L], ang[1L] + cumsum(step))
+    }
+    data.frame(
+        x = sqrt(mat[, 1]^2 + mat[, 2]^2),
+        y = ang,
+        .id = id
+    )
+}
+
 #' Vertex paths for the polar layout, in (radius, angle) space.
+#'
+#' The ribbon outline is **ported from circlize** (see [chord_bezier()]):
+#' a quadratic Bezier in the plane between the two feet, closed by the two
+#' arcs. Every hand-rolled polar approximation before this one produced a
+#' recognisably different band -- a pinched waist, a hole in the middle, or
+#' edges that crossed -- so the geometry is now the reference shape rather
+#' than an interpretation of it.
 #' @keywords internal
 #' @noRd
 chord_paths_polar <- function(data, type, curvature, ncp) {
@@ -222,62 +429,22 @@ chord_paths_polar <- function(data, type, curvature, ncp) {
     out <- list()
     if (type == "ribbon") {
         for (i in seq_len(nrow(data))) {
-            a0 <- data$theta0[i]; a1 <- data$theta1[i]
-            b0 <- data$theta_end0[i]; b1 <- data$theta_end1[i]
-            # A ribbon is one chord swept across both feet. Run a single
-            # spine between the two foot *midpoints* and offset it by half
-            # the local foot width, so the two edges are the same curve by
-            # construction: sampling each edge from its own end made the
-            # ribbon pinch at one end and swell at the other ("the width does
-            # not look natural", review R20).
-            ca <- (a0 + a1) / 2
-            cb <- (b0 + b1) / 2
-            d <- ang_diff(ca, cb)
-            k <- bulge_radius(d, curvature)
-            ring <- 1
-            tt <- seq(0, 1, length.out = m)
-            rr <- bezier_r_at(ring, k, ring, tt)
-            th <- bezier_t_at(ca, ca + d, tt)
-            # One spine, two offsets. The ribbon is the spine curve from the
-            # a-foot midpoint to the b-foot midpoint, widened by half the local
-            # foot width at each end and tapering to a waist in between.
-            # Building each edge from its own end (the obvious approach) makes
-            # the two travel in opposite directions around the circle --
-            # ang_diff(a1, b0) and ang_diff(b1, a0) come out with opposite
-            # signs -- and the ribbon folds shut in the middle (R20).
-            ca <- (a0 + a1) / 2
-            cb <- (b0 + b1) / 2
-            d <- ang_diff(ca, cb)
-            k <- bulge_radius(d, curvature)
-            ring <- 1
-            tt <- seq(0, 1, length.out = m)
-            rr <- bezier_r_at(ring, k, ring, tt)
-            th <- bezier_t_at(ca, ca + d, tt)
-            # half the foot width in radians, interpolated along the spine
-            hw <- (abs(a1 - a0) / 2) + (abs(b1 - b0) / 2 - abs(a1 - a0) / 2) * tt
-            out[[length(out) + 1L]] <- data.frame(
-                x = c(
-                    rep(ring, arc_samples(m)), rr,
-                    rep(ring, arc_samples(m)), rev(rr)
-                ),
-                y = c(
-                    seq(a0, a1, length.out = arc_samples(m)), th + hw,
-                    seq(b1, b0, length.out = arc_samples(m)), rev(th - hw)
-                ),
-                .id = i
+            outline <- chord_ribbon_outline(
+                a0 = data$theta0[i], a1 = data$theta1[i],
+                b0 = data$theta_end0[i], b1 = data$theta_end1[i],
+                rou = 1, curvature = curvature
             )
+            out[[length(out) + 1L]] <- chord_outline_to_polar(outline, i)
         }
     } else {
         for (i in seq_len(nrow(data))) {
             t0 <- data$y[i]; t1 <- data$yend[i]
             r0 <- data$x[i]; r1 <- data$xend[i]
-            d <- ang_diff(t0, t1)
-            k <- bulge_radius(d, curvature)
-            out[[length(out) + 1L]] <- data.frame(
-                x = c(bezier_r(r0, k, r1, m)),
-                y = c(bezier_t(t0, t0 + d, m)),
-                .id = i
-            )
+            # a line has no width: its spine is the Bezier between the two
+            # slot midpoints, taken all the way through the centre when the
+            # ends face each other
+            spine <- chord_bezier(t0, t1, r0, r1)
+            out[[length(out) + 1L]] <- chord_outline_to_polar(spine, i)
         }
     }
     do.call(rbind, out)
@@ -335,27 +502,6 @@ chord_paths_cartesian <- function(data, type, curvature, ncp) {
     do.call(rbind, out)
 }
 
-#' Control point radius for the polar layout.
-#'
-#' `k = 1 - 4|d| / (3pi)`: `1` keeps the curve on the ring, `-1/3` sends it
-#' through the centre. With an explicit `curvature` the user wins.
-#' @keywords internal
-#' @noRd
-bulge_radius <- function(d, curvature) {
-    k <- if (is.na(curvature)) {
-        1 - 4 * abs(d) / (3 * pi)
-    } else {
-        -(curvature / 3) * sign(d)
-    }
-    # The control points sit on the *rays* of the two ends, so a negative
-    # radius puts one control on the far side of the centre. The control
-    # polygon then stops being monotone (1, -1/3, +1/3, -1 at |d| = pi) and
-    # the curve runs back on itself: the ribbon folds over in the middle.
-    # Clamping at 0 keeps the polygon monotone, and a link spanning half a
-    # turn is drawn as a smooth curve through the centre (review R19).
-    pmax(k, 0)
-}
-
 #' Control point for the linear layout: an absolute distance left of the spine.
 #' @keywords internal
 #' @noRd
@@ -368,17 +514,6 @@ bulge_cart <- function(d, curvature) {
     # `ratio = 1` so one radius unit is one radian on screen (R17).
     if (is.na(curvature)) -(0.8 / 0.75) * abs(d) / (2 * pi)
     else -(curvature / 3) * sign(d)
-}
-
-#' Radius along a cubic bezier whose control radii are both `k`.
-#' @keywords internal
-#' @noRd
-bezier_r_at <- function(r0, k, r1, tt) {
-    (1 - tt)^3 * r0 + 3 * (1 - tt)^2 * tt * k + 3 * (1 - tt) * tt^2 * k + tt^3 * r1
-}
-
-bezier_t_at <- function(t0, t1, tt) {
-    ((1 - tt)^3 + 3 * (1 - tt)^2 * tt) * t0 + (3 * (1 - tt) * tt^2 + tt^3) * t1
 }
 
 bezier_r <- function(r0, k, r1, m) {

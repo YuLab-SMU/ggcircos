@@ -197,27 +197,28 @@ structure(
 3. **sector 分组**：sector 顺序 = 首次出现顺序；`sectors` 参数为命名向量时按该向量的名字排序。
    **扇区必须连续（R1）**：`order`（`"hclust"`、显式向量、函数）只在**扇区内部**生效，排完之后
    再按扇区首次出现顺序做一次稳定分组。否则 `sectors =` + `order = "hclust"` 会把同扇区节点打散，
-   切换次数超过预算的 `S-1`，弧越界重叠（实测溢出 0.57–1.51 弧度）。
-4. **角度总预算**：`span = 2π - N*G - (S-1)*SG`；要求 `span > 0`，否则
-   `ggcircos_error_layout: "gap too large: N*gap + (S-1)*sector_gap >= 1 turn"`。
+   切换次数超过预算的 `S`，弧越界重叠（实测溢出 0.57–1.51 弧度）。
+4. **角度总预算**：`span = 2π - N*G - S*SG`（`S ≤ 1` 时没有 sector 缝）；要求 `span > 0`，否则
+   `ggcircos_error_layout: "gap too large: N*gap + S*sector_gap >= 1 turn"`。
    **⚠ 决策（B4）**：`gap` 的默认值是自适应的，不是字面常量。默认值按公式
    `gap = min(gap_user, 0.2 / N)` 计算：节点少时用 `gap_user = 0.01`（行为不变），
    节点多时自动收窄，保证 `N*G ≤ 0.2`（留 20% 圈给缝）。`sector_gap` 同理
-   收窄到 `min(sector_gap_user, 0.2 / max(S - 1, 1))`。用户显式传入的 `gap`
-   仍然是上界——运行时**不允许**它超过 `1/N`（超过就报错，不静默改写）。
+   收窄到 `min(sector_gap_user, 0.2 / max(S, 1))`，保证 `S*SG ≤ 0.2`。
    生效值记在 `layout_params()$gap` 里（不是用户传入值）。
 5. **节点弧**：每个节点宽 `w = span / N`；**带 `weight` 时改为 `w_i = span · Σ|w|_i / ΣΣ|w|`**
    （节点弧按它承载的权重分配，和 circlize 的 `chordDiagram()` 一致；见 §4.6-2）。第 i 个节点
-   `theta0 = start + 已用角度`，`theta1 = theta0 + w`，节点之间加 `G`，sector 切换处再加 `SG`。
+   `theta0 = start + 已用角度`，`theta1 = theta0 + w`，节点之间加 `G`；每个 sector 块的**两端**
+   再加 `SG`——含跨 `start` 的那一处（B33：只留 `S-1` 处会让两个 sector 读作一整圈被咬掉一口，
+   与 circlize 的 `gap.after` 每端都留宽缝不一致）。
    最终把 `theta*` 对 `2π` 取模（`start` 可为任意实数）。
-   **⚠ 决策（B3）**：`gap < 0`、`sector_gap < 0`、`gap ≥ 1/N`、`sector_gap ≥ 1/(S-1)`
-   在进入预算计算前就 `ggcircos_error_layout`，不允许负缝吞掉整圈。
+   **⚠ 决策（B3）**：`gap < 0` / `sector_gap < 0` 直接 `ggcircos_error_layout`；
+   显式 `gap` / `sector_gap` 先按 B4 收窄，收窄后 `span ≤ 0` 仍报 `ggcircos_error_layout`。
 6. **槽位分配**：对每个节点，**每一侧**（`from` 端 / `to` 端）的入射边按 `(对方节点 order, edge_id)` 排序，各自等分节点弧。
    该侧槽位宽 `slot_w = p * node_w / 该侧边数`，**槽位之间留 `(1 - p) * node_w / 该侧边数` 的空隙**，
    ribbon 的脚只覆盖槽位本身（完整契约见 §4.6）。`from` 与 `to` 两端**独立**分配（各自用自己的边数做分母）。
 7. **自环**：`from == to` 的边在 `self_loops = FALSE` 时丢弃，并 `cli_inform()` 一次（消息里给条数）。
 8. **轨道带**：`tracks = c(values = .2, heat = .1)` →
-   `r0 = 1 + track_offset + 累计(width) + 累计(track_offset)`，`r1 = r0 + width`；`track_offset` 默认 **0.06**，可在 `ggcircos()` 里覆盖。**不变量**：第一个带必须落在节点环之外——`geom_node_arc()` 默认占 `r ∈ [1.01, 1.05]`，故 `track_offset ≥ 0.05`（旧默认 0.02 让第一轨从 1.02 起，直接盖住节点环；灰色轨道叠灰色环，肉眼看不出来）。
+   `r0 = 1 + track_offset + 累计(width) + 累计(track_offset)`，`r1 = r0 + width`；`track_offset` 默认 **0.06**，可在 `ggcircos()` 里覆盖。**不变量**：第一个带必须落在节点环之外——`geom_node_arc()` 默认占 `r ∈ [1, 1.04]`（`offset = 0`，环脚与飘带齐平，B34），故 `track_offset ≥ 0.04`（旧默认 0.02 让第一轨从 1.02 起，直接盖住节点环；灰色轨道叠灰色环，肉眼看不出来）。
    **⚠ 决策（B2）**：0 条链接（空 `data.frame`）是**合法输入**——节点表仍按 §4.4 建立，
    `links` 为 0 行但列齐全（§4.2 的所有列都在，值为空向量），图可画节点环。
 9. **不变量自检**（失败即包 bug，`ggcircos_error_internal` 而不是裸 `stopifnot`）：
@@ -455,19 +456,45 @@ geom_chord(
 
 **几何定义**（`type = "ribbon"`，非线性的情况）
 
-对每条边，两端**槽位**为 `[a0, a1]`、`[b0, b1]`（§4.6：槽位是不重叠的角区间，不是节点弧），
-有向最短差 `d = wrap(b0 - a1)`（`wrap` 到 `(-π, π]`），控制点半径
+**⚠ 决策（B34）：这一段是 `circlize::circos.link()` 的移植，不再自研。**
+先后试过四种自研几何（角度偏移脊线、平面偏移脊线、同侧两条边、残差折叠），
+每种都"看着差不多"但都不是它的形状；失败的判据是**多边形面积**——
+错误配对算出 5.98（≈ 整个圆盘 `2π`），正确是 0.24，差 25 倍。
+自研期间脚的位置、端点半径全对，只有"中间围出多少面积"错，肉眼很难发现。
+
+两端**槽位**为 `[a0, a1]`、`[b0, b1]`（§4.6）。两条边是**交叉配对**：
 
 ```
-k = 1 - (4/(3π)) * |d|
+d1 = Q(a0, b1)      # 低角端 -> 对方高角端
+d2 = Q(a1, b0)      # 高角端 -> 对方低角端
 ```
 
-两条边：
+`Q(p, q)` 是带权二次贝塞尔 `circlize:::getQuadraticPoints()`：
 
-- 边 1：三次贝塞尔 `P0=(r, a1)`、`P1=(k, a1)`、`P2=(k, b0)`、`P3=(r, b0)`
-- 边 2：`P0=(r, b1)`、`P1=(k2, b1)`、`P2=(k2, a0)`、`P3=(r, a0)`，`k2 = 1 - (4/(3π)) * |wrap(a0 - b1)|`
+```
+t1, t2  = deg(p) %% 360, deg(q) %% 360          # |t1-t2| = 180 时给 t1 加 0.001
+rmin    = min(rou1, rou2)
+beta    = (t1 - t2) %% 360；beta > 180 时取 360 - beta
+h_auto  = rmin * (1 - h.ratio * cos(beta/2))    # h.ratio 默认 0.5
+h2      = h_auto - rmin * (1 - cos(beta/2))
+dis     = ½·|(x1,y1) - (x2,y2)|
+控制点  P0 = (-dis, 0)、P1 = (0, (1+w)/w · h2)、P2 = (dis, 0)
+曲线    B(t) = Σ 二次贝塞尔 / 带权分母，w 默认 1
+采样    按弧长 / (2π/500) 取点，最少 3 个且为奇数
+旋转    alpha = -90 + (360 - (t1+t2)/2)，再平移到两端中点
+```
 
-多边形顶点序列 = `弧(a0→a1, r=1)` + `边1` + `弧(b0→b1, r=1)` + `边2`，每段 `ncp` 个点。
+**闭合弧取短向**：`arc` 只覆盖脚自身宽度（几度）。`circlize:::arc.points()`
+用的是 `(t2-t1) %% 360`（可能绕一整圈），直接照搬会把脚变成 350° 的长弧、
+多边形围住整个圆盘。
+
+多边形顶点序列 = `d1` + `弧(b1→b0, r=1)` + `rev(d2)` + `弧(a1→a0, r=1)`。
+
+性质（写进测试）：
+
+- 多边形面积是"一条带"，远小于 `0.5π`（错误配对会到 `2π` 量级）；
+- 顶点全部在 `r ∈ [0, 1]`，脚上的点恰在 `r = 1`；
+- `chord_bezier()` 与 `circlize:::getQuadraticPoints()` 逐点一致（实测 1.4e-15）。
 
 **⚠ 决策（A3）**：环脚的角跨度**严格等于槽位宽度** `p · node_w / 该侧边数`（按侧分配，见 §4.6），不画到节点弧边界。
 `p = 1` 时槽位铺满节点弧（无可见空隙）；`p < 1` 时槽位之间留 `(1-p)` 的空隙，
@@ -479,7 +506,8 @@ ribbon 的脚之间也应有对应空隙。**回归测试**：对任一 `p ∈ {
 - `d = 0` 时曲线退化为沿环的弧（`k = 1`）；
 - `|d| = π` 时控制点落在圆心（`k = 0`，中点 `r = 0.25`）——**不是**负半径。
   ⚠ 曾写成 `k = -1/3`「过圆心」，但控制点在两端的**射线**上，负半径等于把控制点放到
-  圆心对面，控制多边形变成 `1, -1/3, +1/3, -1`（非单调），曲线在中间折回去（R19）。
+  圆心对面，控制多边形变成 `1, -1/3, +1/3, -1`（非单调），曲线在中间折回去（R19）；
+  实测放开后在 55 条链路上采到 `r = -1e-3`，曲线穿到洞外（B34 复核时再次确认）。
   `k` 一律钳到 `≥ 0`：链路最深处到圆心附近，且永不回头。
 - 端点切线方向是**径向**（`P1 - P0` 与半径同向）——这是"脚"看起来贴着环的原因；
 - 曲线始终在 `r ∈ [0, 1]`。
@@ -501,7 +529,7 @@ ribbon 的脚之间也应有对应空隙。**回归测试**：对任一 `p ∈ {
 ### 6.2 节点层
 
 ```r
-geom_node_arc(mapping = NULL, data = NULL, width = 0.04, offset = 0.01,
+geom_node_arc(mapping = NULL, data = NULL, width = 0.04, offset = 0,
               linewidth = 0.2, ...)
 geom_node_text(mapping = NULL, data = NULL, rotate = FALSE, offset = 0.10,
                nudge_x = 0, ...)
@@ -1074,8 +1102,8 @@ circos_layout
 
 ## 附录 B：三个公式
 
-1. 角度预算：`span = 2π - N·gap_eff·2π - (S-1)·sector_gap_eff·2π`，
-   其中 `gap_eff = min(gap_user, 0.2/N)`、`sector_gap_eff = min(sector_gap_user, 0.2/max(S-1,1))`
+1. 角度预算：`span = 2π - N·gap_eff·2π - S·sector_gap_eff·2π`，
+   其中 `gap_eff = min(gap_user, 0.2/N)`、`sector_gap_eff = min(sector_gap_user, 0.2/max(S,1))`
 2. 槽位：`s = node_w / n_links`，`slot_w = p · s`，槽位之间留 `(1-p)·s`
 3. 贝塞尔控制半径：`k = 1 - (4/(3π))·|d|`，`d` 为两端最短有向角差
    → `|d| = π` 时过圆心；端点切线为径向
