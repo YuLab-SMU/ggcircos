@@ -37,6 +37,15 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
 * `geom_node_arc()` sits at `r = 1` (`offset = 0`), sharing an edge with the
   ribbon feet. Pass `offset =` for a visible gap.
 
+## Inputs
+
+* `columns =` maps a link table whose endpoints are spelled differently:
+  `ggcircos(blast, columns = c(from = "qaccver", to = "saccver"))`. The rename
+  copies, so the caller's frame is untouched, and the columns you did not map
+  travel with the link table -- `weight = pident` and `aes(fill = pident)`
+  still reach them. Covers BLAST table output, GFF3, BED and anything else
+  without a method per format.
+
 ## Tracks
 
 * A track with several rows per node now splits the node's arc between them,
@@ -45,6 +54,9 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   and `geom = "area"` could not express a coverage profile at all. Only
   `geom = "boxplot"` keeps the full arc, since its stat aggregates the rows
   into one mark. A track with one row per node is unchanged, bin for bin.
+* `geom_track_axis()` no longer needs `limits` repeated: omitting it takes the
+  range from the track layer filling that band, so the axis cannot label a
+  span the values were not scaled against. Pass `limits` to override it.
 
 ## Layering
 

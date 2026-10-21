@@ -668,6 +668,41 @@ point/text/label/tile/rect/segment/path/violin/annotate 与 rds 往返）。
 **教训**：B7 修 tile 时把切分逻辑塞进了 tile 分支，其实那是「一个节点有多行」的性质，
 不是 tile 的性质。geom 分支只该用来决定 `band_fill`/聚合这类真差异。
 
+### B38. 外来列名（BLAST / GFF）进不来 —— **已加 `columns =`（2026-10-21）**
+
+定位文档写"兼容 ggchord 的列名即可"，但代码里一行映射都没有：`grep qaccver R/` 零命中。
+BLAST 表输出的端点是 `qaccver`/`saccver`，直接喂进去报
+`The data.frame is missing required columns from and to`。这是生信用户第一步就撞的墙。
+
+修法：`columns = c(from = "qaccver", to = "saccver")`，一个参数覆盖所有格式，
+而不是给 BLAST 写一个方法（GFF3、BED、InterProScan 各有一套拼写）。
+映射是副本，没映射的列随 links 表一起走，`weight = pident` 之类照常可用。
+
+回归测试：`"columns = maps a foreign link table onto from/to (B38)"`。
+
+### B39. 轴必须重复写一遍轨道范围 + `scales::squish()` 截断标签 —— **已修（2026-10-21）**
+
+两个问题叠在一起：
+
+1. `geom_track_axis()` 强制要 `limits`，用户已经在 `geom_track()` 里写过
+   `limits = c(0, 1)`，轴这里还要再写一遍。两处会漂移。
+2. 顺着查标签生成，发现 `format(scales::squish(breaks))` 是**真 bug**：
+   `scales::squish()` 的默认 `range = c(0, 1)`，任何大于 1 的断点会被**压成 1.0**。
+   `limits = c(0, 2)` 的轴因此读出 `0.0 / 0.5 / 1.0`（末尾三个 1.0 挤在一起），
+   数据没错、刻度没错，只有标签错。
+
+修法：
+- 轨道层把自己的 `scales`/`limits`/`baseline` 记进 layer tag；
+  `ggplot_add.ggcircos_axis()` 在 `limits` 缺省时从同 band 的 `scales = "fixed"`
+  轨道层读，读不到报 `ggcircos_error_data`（不画空轴）；显式 `limits` 优先。
+- 标签改成 `format(breaks)`。断点按构造就在 `limits` 内，需要格式化不需要截断。
+
+顺带修掉两个空值判断的坑：省略的参数进 tag 是 `numeric(0)` 不是 `NULL`，
+`is.null()` 判不出来，得用 `length()`。
+
+回归测试：`"geom_track_axis() takes its range from the track layer (B39)"`
+（自动取范围、显式覆盖、>1 的断点标签正确、无轨道时报错）。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

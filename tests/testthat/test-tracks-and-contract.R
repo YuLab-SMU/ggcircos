@@ -657,3 +657,74 @@ test_that("multi-row tracks split the node arc for every non-aggregating geom (B
     expect_equal(d1$ymin, nd$theta - half, tolerance = 1e-12)
     expect_equal(d1$ymax, nd$theta + half, tolerance = 1e-12)
 })
+
+test_that("columns = maps a foreign link table onto from/to (B38)", {
+    # BLAST table output spells its endpoints qaccver/saccver. Rather than one
+    # method per format, the caller names the columns.
+    blast <- data.frame(
+        qaccver = c("chr1", "chr1", "chr2"),
+        saccver = c("chrA", "chrB", "chrA"),
+        qstart = c(100, 900, 50), qend = c(500, 1200, 300),
+        pident = c(95, 80, 88),
+        stringsAsFactors = FALSE
+    )
+    expect_error(circos_layout(blast), class = "ggcircos_error_data")
+
+    lay <- circos_layout(blast, columns = c(from = "qaccver", to = "saccver"))
+    expect_setequal(layout_nodes(lay)$id, c("chr1", "chr2", "chrA", "chrB"))
+    expect_equal(nrow(layout_links(lay)), 3L)
+    # the columns the caller did not map travel with the table
+    expect_true(all(c("qstart", "qend", "pident") %in% names(layout_links(lay))))
+    # and the caller's frame is untouched
+    expect_equal(names(blast)[1:2], c("qaccver", "saccver"))
+
+    # weight can name a mapped column
+    p <- ggcircos(blast, columns = c(from = "qaccver", to = "saccver"),
+                  weight = pident) + geom_chord(aes(fill = pident))
+    expect_s3_class(ggplot2::ggplotGrob(p), "gtable")
+
+    # a column that does not exist is an error, not a silent no-op
+    expect_error(
+        circos_layout(blast, columns = c(from = "nope", to = "saccver")),
+        class = "ggcircos_error_data"
+    )
+})
+
+test_that("geom_track_axis() takes its range from the track layer (B39)", {
+    # The track already knows what its values were normalised against. Asking
+    # for the same pair again on the axis was pure repetition, and the two
+    # could drift.
+    m <- cor(mtcars)[1:6, 1:6]
+    vals <- data.frame(id = colnames(m), v = seq(0.2, 0.9, length.out = 6))
+    base <- function(lim) {
+        ggcircos(m, tracks = c(t = 0.15)) +
+            geom_track(data = vals, aes(x = v), node = id, band = "t",
+                       scales = "fixed", limits = lim)
+    }
+    axis_labels <- function(p) {
+        b <- ggplot2::ggplot_build(p)
+        for (d in b$data) {
+            if (!"label" %in% names(d)) next
+            lab <- trimws(unique(d$label[nzchar(d$label)]))
+            if (length(lab)) return(lab)
+        }
+        character(0)
+    }
+
+    # the axis labels follow the track's own range
+    expect_equal(axis_labels(base(c(0, 1)) + geom_track_axis(band = "t")),
+                 c("0.0", "0.5", "1.0"))
+    expect_equal(axis_labels(base(c(0, 100)) + geom_track_axis(band = "t")),
+                 c("0", "50", "100"))
+    # an explicit limits still wins, and breaks above 1 are labelled honestly
+    # (they used to be squished to the default c(0, 1) range and all read 1.0)
+    expect_equal(
+        axis_labels(base(c(0, 1)) + geom_track_axis(band = "t", limits = c(0, 2))),
+        c("0.0", "0.5", "1.0", "1.5", "2.0")
+    )
+    # with no track to read, it says so instead of drawing an empty axis
+    expect_error(
+        ggcircos(m, tracks = c(t = 0.15)) + geom_track_axis(band = "t"),
+        class = "ggcircos_error_data"
+    )
+})

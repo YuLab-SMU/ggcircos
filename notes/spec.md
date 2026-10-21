@@ -279,6 +279,15 @@ structure(
 `igraph` | `V()$name` 或 `1..n` | `E()` + `E()$weight` |
 `circos_layout` | 原样返回（幂等） | — |
 
+**⚠ 决策（B38）**：外来列名用 `columns =` 映射，不给每种格式写一个方法。
+`columns = c(from = "qaccver", to = "saccver")`：名字是本包要的列，值是人家的列。
+映射是副本，调用方的 data.frame 不被改动；**没映射的列随 links 表一起走**，
+图层还能用（`weight = pident`、`aes(fill = pident)` 都行）。
+
+这么做而不是写 `circos_layout.blast()`：BLAST 表输出、GFF3、BED、InterProScan
+各有一套拼写，而前两者生态里已有 reader（`ggchord::read_blast()` / `read_gff3()`），
+用户把读出来的表丢进来即可。一个参数覆盖所有格式，也覆盖了还没人写方法的格式。
+
 **⚠ 决策**：不引入 `corrr`。`matrix` 走 base R，不再经 `as_cordf()/stretch()`。
 
 **⚠ 决策**：`tbl_graph` / `igraph` 走 `Suggests`；缺包时报
@@ -698,11 +707,14 @@ position_track(band, node = NULL, geom_name = NULL, anchored = FALSE,
 ### 6.5 `geom_track_axis()`
 
 ```r
-geom_track_axis(band, breaks = NULL, limits, labels = waiver(),
+geom_track_axis(band, breaks = NULL, limits = NULL, labels = waiver(),
                 text.size = 3, line.size = 0.2, tick.length = 0.02, ...)
 ```
 
-- **`limits` 必填**（明确不猜别的层的数据范围）。
+- **`limits` 可省（B39）**：省略时从**同一 band 的轨道图层**读它归一化用的范围
+  （要求那层 `scales = "fixed"`）。轨道已经知道自己的范围，轴再问一遍是纯重复，
+  而且两者会漂移。没有可读的轨道层时报 `ggcircos_error_data`，不画空轴。
+  显式传入的 `limits` 优先。
 - `breaks = NULL` → `pretty(limits, 3)`。
 - 画三样东西：`[r0, r1]` 两端沿节点环的弧线、每个 break 在其**自身半径**上的短径向刻度、
   刻度标签（放在该 break 半径再往外 `2·tick.length` 处，**切向**排，同 circlize 的 `circos.axis`）。

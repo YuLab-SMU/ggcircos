@@ -35,6 +35,10 @@
 #' @param track_offset Gap between the node ring, and between tracks. The
 #'   first track band starts at `1 + track_offset`, so keep it at or above
 #'   the node ring's outer edge (0.05 with the default `geom_node_arc()`).
+#' @param columns Optional named character vector mapping the layout's column
+#'   names onto your data's, e.g. `c(from = "qaccver", to = "saccver")` for
+#'   BLAST table output. The rename is a copy; columns you do not map travel
+#'   with the link table, so `weight =` and `aes()` can still reach them.
 #' @param weight Name of the column holding each link's weight, e.g.
 #'   `weight = "r"`. When set, the geometry follows the values: a node's arc
 #'   is proportional to the weight it carries and a slot is proportional to
@@ -90,7 +94,7 @@ circos_layout.circos_layout <- function(x, ...) x
 
 #' @rdname circos_layout
 #' @export
-circos_layout.matrix <- function(x, nodes = NULL, ...) {
+circos_layout.matrix <- function(x, nodes = NULL, ..., columns = NULL) {
     if (nrow(x) != ncol(x)) {
         ggcircos_abort(
             "data",
@@ -131,20 +135,63 @@ circos_layout.matrix <- function(x, nodes = NULL, ...) {
     )
 }
 
+#' Map user column names onto the layout's contract
+#'
+#' `columns` is a named character vector, `c(from = "qaccver", to = "saccver")`:
+#' names are the columns this package wants, values are the user's columns. The
+#' rename is a copy -- the caller's data is never touched -- and the other
+#' columns travel with the link table so layers can still reach them.
+#'
+#' BLAST table output and GFF3 each spell their endpoints differently, and both
+#' already have readers in the wider ecosystem. Letting the caller name the
+#' columns is cheaper than one method per format, and it covers the formats
+#' nobody has written a method for yet.
+#' @keywords internal
+#' @noRd
+rename_columns <- function(x, columns = NULL) {
+    if (is.null(columns)) return(x)
+    if (!is.character(columns) || is.null(names(columns)) ||
+        any(!nzchar(names(columns)))) {
+        ggcircos_abort(
+            "data",
+            c("{.arg columns} must be a named character vector.",
+              i = 'Example: `columns = c(from = "qaccver", to = "saccver")`.')
+        )
+    }
+    absent <- setdiff(unname(columns), names(x))
+    if (length(absent) > 0) {
+        ggcircos_abort(
+            "data",
+            c("{.arg columns} names column{?s} {.field {absent}}, which the data does not have.",
+              i = "Available: {.val {names(x)}}.")
+        )
+    }
+    out <- as.data.frame(x, stringsAsFactors = FALSE)
+    for (target in names(columns)) {
+        source <- columns[[target]]
+        # renaming onto a column that already exists would drop one of them
+        if (target %in% names(out) && !identical(target, source)) {
+            out[[target]] <- NULL
+        }
+        names(out)[names(out) == source] <- target
+    }
+    out
+}
+
 #' @rdname circos_layout
 #' @export
-circos_layout.data.frame <- function(x, nodes = NULL, ...) {
-    missing <- setdiff(c("from", "to"), names(x))
+circos_layout.data.frame <- function(x, nodes = NULL, ..., columns = NULL) {
+    links <- rename_columns(x, columns)
+    missing <- setdiff(c("from", "to"), names(links))
     if (length(missing) > 0) {
         ggcircos_abort(
             "data",
             c(
                 "The data.frame is missing required column{?s} {.field {missing}}.",
-                i = "Rename them, or pass {.arg from} / {.arg to} to {.fn geom_chord}."
+                i = "Pass {.arg columns = c(from = \"...\", to = \"...\")} to map your own names."
             )
         )
     }
-    links <- x
     links$from <- as.character(links$from)
     links$to <- as.character(links$to)
     circos_layout_build(
@@ -157,7 +204,7 @@ circos_layout.data.frame <- function(x, nodes = NULL, ...) {
 
 #' @rdname circos_layout
 #' @export
-circos_layout.tbl_graph <- function(x, nodes = NULL, ...) {
+circos_layout.tbl_graph <- function(x, nodes = NULL, ..., columns = NULL) {
     require_suggests("tidygraph", "tbl_graph")
     verts <- as.data.frame(tidygraph::as_tibble(tidygraph::activate(x, "nodes")))
     edges <- as.data.frame(tidygraph::as_tibble(tidygraph::activate(x, "edges")))
@@ -173,7 +220,7 @@ circos_layout.tbl_graph <- function(x, nodes = NULL, ...) {
 
 #' @rdname circos_layout
 #' @export
-circos_layout.igraph <- function(x, nodes = NULL, ...) {
+circos_layout.igraph <- function(x, nodes = NULL, ..., columns = NULL) {
     require_suggests("igraph", "igraph")
     graph_to_input(
         igraph::as_data_frame(x, what = "vertices"),

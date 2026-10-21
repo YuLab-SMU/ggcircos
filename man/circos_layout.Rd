@@ -29,13 +29,13 @@ circos_layout(
 
 \method{circos_layout}{circos_layout}(x, ...)
 
-\method{circos_layout}{matrix}(x, nodes = NULL, ...)
+\method{circos_layout}{matrix}(x, nodes = NULL, ..., columns = NULL)
 
-\method{circos_layout}{data.frame}(x, nodes = NULL, ...)
+\method{circos_layout}{data.frame}(x, nodes = NULL, ..., columns = NULL)
 
-\method{circos_layout}{tbl_graph}(x, nodes = NULL, ...)
+\method{circos_layout}{tbl_graph}(x, nodes = NULL, ..., columns = NULL)
 
-\method{circos_layout}{igraph}(x, nodes = NULL, ...)
+\method{circos_layout}{igraph}(x, nodes = NULL, ..., columns = NULL)
 }
 \arguments{
 \item{x}{A square \code{matrix}, a \code{data.frame} with \code{from}/\code{to} columns, a
@@ -91,6 +91,11 @@ default, gives every node an equal arc and every link an equal share of
 it -- the value then only shows through \code{aes(fill = )}.}
 
 \item{...}{Used by the methods to build the node table from graph objects.}
+
+\item{columns}{Optional named character vector mapping the layout's column
+names onto your data's, e.g. \code{c(from = "qaccver", to = "saccver")} for
+BLAST table output. The rename is a copy; columns you do not map travel
+with the link table, so \verb{weight =} and \code{aes()} can still reach them.}
 }
 \value{
 An object of class \code{circos_layout}.

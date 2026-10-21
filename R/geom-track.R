@@ -178,7 +178,11 @@ geom_track <- function(mapping = NULL,
         list(band = position$band, band_name = position$band_name,
              geom_name = geom, anchored = spec$anchored,
              node = node_col, width = position$width,
-             value_name = value_name)
+             value_name = value_name,
+             # what the values were normalised against, so a later
+             # geom_track_axis() can label the band without being told twice
+             scales = position$scales, limits = position$limits,
+             baseline = position$baseline)
     )
 }
 

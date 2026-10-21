@@ -20,6 +20,7 @@ ggcircos(
   self_loops = FALSE,
   radius = NULL,
   weight = NULL,
+  columns = NULL,
   ...
 )
 }
@@ -46,6 +47,11 @@ the layout carry the values the way \code{\link[circlize:chordDiagram]{circlize:
 node arcs proportional to the weight they carry, slots proportional to
 their link's weight. Left \code{NULL} every node keeps an equal arc and the
 values only drive \code{aes(fill = )}.}
+
+\item{columns}{Optional named character vector mapping the layout's column
+names onto your data's, e.g. \code{c(from = "qaccver", to = "saccver")} for
+BLAST table output. The rename is a copy; columns you do not map travel
+with the link table, so \verb{weight =} and \code{aes()} can still reach them.}
 
 \item{...}{Passed on to \code{\link[=circos_layout]{circos_layout()}}.}
 }

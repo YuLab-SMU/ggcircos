@@ -48,14 +48,19 @@ geom_track_axis <- function(mapping = NULL,
     if (missing(band)) {
         ggcircos_abort("band", "{.fn geom_track_axis} needs a {.arg band}.")
     }
-    if (missing(limits) || length(limits) != 2L || anyNA(limits)) {
-        ggcircos_abort(
-            "data",
-            "{.fn geom_track_axis} needs {.arg limits} -- the axis never guesses the track's range.",
-            i = "Use the same limits you passed to {.fn geom_track}, e.g. {.code limits = c(0, 1)}."
-        )
+    # `limits` may be omitted: `ggplot_add` fills it from the track layer that
+    # shares this band, so the range the bars were scaled against and the range
+    # the axis labels come from cannot drift apart. Standalone use still needs
+    # an explicit pair, and that is checked once the plot is available.
+    if (!missing(limits) && (length(limits) != 2L || anyNA(limits))) {
+        ggcircos_abort("data", "{.arg limits} must be a numeric length-2 vector.")
     }
-    if (is.null(breaks)) breaks <- pretty_within(limits, 3)
+    if (missing(limits)) limits <- NULL
+    # `limits` may still be missing here (the axis can inherit the track's
+    # range at ggplot_add time), so only derive breaks when it is known
+    if (is.null(breaks) && length(limits) == 2L) {
+        breaks <- pretty_within(limits, 3)
+    }
     band_name <- if (is.character(band) && length(band) == 1L) band else NULL
     tag_layer(
         layer(
@@ -129,7 +134,11 @@ track_axis_data <- function(band, limits, breaks, labels, node_table, tick_lengt
         empty(0)
     }
     lab <- if (is_waive(labels) || is.null(labels)) {
-        format(scales::squish(breaks))
+        # NOT scales::squish(): its default range is c(0, 1), so any break
+        # above 1 was silently relabelled "1.0" -- an axis reading
+        # 0.0/0.5/1.0 for limits c(0, 2). Breaks are already inside `limits`
+        # by construction, so they need formatting, not clamping.
+        format(breaks)
     } else {
         as.character(labels)
     }

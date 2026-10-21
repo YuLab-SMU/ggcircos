@@ -354,6 +354,31 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     re_add(drop_geometry_params(object), plot, object_name)
 }
 
+#' The value range a track layer was normalised against
+#'
+#' Walks the layers already on the plot and returns `c(lower, upper)` for the
+#' first track layer drawing into `band`. A `scales = "free"` track has no
+#' fixed pair -- each node normalised against itself -- so the band's own
+#' limits come from its values instead, which is the range the bars span.
+#' @keywords internal
+#' @noRd
+axis_limits_from_layers <- function(plot, band, band_name = NULL) {
+    same <- function(settings) {
+        # a numeric band matches on the radii; a declared name matches on the
+        # name, since the layer's own radii are the resolved ones
+        if (!is.null(band_name) && identical(settings$band_name, band_name)) return(TRUE)
+        if (is.null(settings$band) || !is.numeric(settings$band)) return(FALSE)
+        isTRUE(all.equal(as.numeric(settings$band), as.numeric(band)))
+    }
+    for (layer in plot$layers) {
+        settings <- layer_settings(layer)
+        if (!same(settings)) next
+        if (!identical(settings$scales, "fixed") || is.null(settings$limits)) next
+        return(as.numeric(settings$limits))
+    }
+    NULL
+}
+
 #' Axis layers: build the geometry once, here
 #'
 #' @importFrom ggplot2 ggplot_add
@@ -364,6 +389,35 @@ ggplot_add.ggcircos_axis <- function(object, plot, object_name, ...) {
     lay <- require_layout(plot, object_name)
     params <- layer_settings(object)
     band <- track_band(params$band_name, params$band, layout_node_table(lay))
+    limits <- params$limits
+    # an omitted argument reaches the tag as an empty vector, not NULL
+    if (length(limits) != 2L) {
+        # take the range from the track layer that fills this band, so the axis
+        # cannot label a different span than the one the values were scaled to
+        limits <- axis_limits_from_layers(plot, band, params$band_name)
+        if (is.null(limits)) {
+            ggcircos_abort(
+                "data",
+                c(
+                    "{.fn geom_track_axis} cannot tell which range to label.",
+                    i = "Add the track for this band first, or pass {.arg limits} explicitly."
+                )
+            )
+        }
+    }
+    params$limits <- limits
+    # "pick the breaks" means the default has to wait until the limits are
+    # known, which is here and not in geom_track_axis(). The tag stores an
+    # empty vector rather than NULL for an omitted argument, so length is the
+    # test, not is.null().
+    if (length(params$breaks) == 0L) {
+        params$breaks <- pretty_within(limits, 3)
+    }
+    # limits supplied on the axis itself may disagree with the breaks computed
+    # from a different pair; when they do, the explicit limits win
+    if (length(params$breaks) && !all(params$breaks >= limits[1] & params$breaks <= limits[2])) {
+        params$breaks <- pretty_within(limits, 3)
+    }
     object$data <- track_axis_data(
         band = band,
         limits = params$limits,

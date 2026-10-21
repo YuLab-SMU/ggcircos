@@ -16,6 +16,10 @@ label_space <- 0.22
 #'   Passed to [circos_layout()], which documents each of them.
 #' @param layout `"circular"` for the polar layout, `"arc"` for the linear
 #'   one, where links bulge to the left of a vertical spine.
+#' @param columns Optional named character vector mapping the layout's column
+#'   names onto your data's, e.g. `c(from = "qaccver", to = "saccver")` for
+#'   BLAST table output. The rename is a copy; columns you do not map travel
+#'   with the link table, so `weight =` and `aes()` can still reach them.
 #' @param weight Name of the column holding each link's weight, e.g.
 #'   `weight = r` or `weight = "r"` (a matrix supplies `r`). Set it to make
 #'   the layout carry the values the way [circlize::chordDiagram()] does:
@@ -69,6 +73,7 @@ ggcircos <- function(data,
                      self_loops = FALSE,
                      radius = NULL,
                      weight = NULL,
+                     columns = NULL,
                      ...) {
     layout <- match.arg(layout)
     radius <- radius %||% if (layout == "arc") 0 else 1
@@ -86,7 +91,8 @@ ggcircos <- function(data,
         sector_gap = sector_gap, slot_fill = slot_fill, slot_gap = slot_gap,
         start = start,
         tracks = tracks, track_offset = track_offset,
-        self_loops = self_loops, radius = radius, weight = weight_col, ...
+        self_loops = self_loops, radius = radius, weight = weight_col,
+        columns = columns, ...
     )
 
     rmax <- radius
