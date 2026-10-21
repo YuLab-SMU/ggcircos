@@ -22,6 +22,12 @@
 - 快照协议：`NOT_CRAN=true` 才会跑 vdiffr；验收只认 `testthat::snapshot_accept("snapshots/")`，
   不要手工 `cp` 覆盖 `.svg`。快照变了先渲染目检（Edge 转 PNG），再 accept。
 - 无头渲染 SVG→PNG 一律 Microsoft Edge（见全局 AGENTS.md）。
+- **渲染 README 前先装包**：`README.Rmd` 里是 `library(ggcircos)`，`rmarkdown::render()`
+  用的是**已安装**的那份，不是 `load_all` 的工作区代码。装旧了会在某个已修好的坐标路径上
+  报错，看起来像新 bug（实测：`self$limits[[n]]` subscript out of bounds 就是这个）。
+  顺序固定为 `R CMD INSTALL --no-docs --no-byte-compile .` → 再 render。
+- README 的图必须与当前几何同源；几何一改就重渲染，别让 `man/figures/README-*.png`
+  停在旧实现上（0.1.0 收尾时正是三张图还画着收腰的旧飘带）。
 
 ## ggplot2 4.0 扩展的四个坑（每个都咬过一次，均有回归测试）
 
@@ -36,8 +42,9 @@
 
 ## 几何不变量（改任何一条，spec 与测试同时改）
 
-- `track_offset` 默认 0.06，不变量 `1 + track_offset ≥ 节点环外沿 1.05`（B18：旧默认 0.02
-  让第一条带盖住节点环，灰色叠灰色看不出来）。
+- `track_offset` 默认 0.06，不变量 `1 + track_offset ≥ 节点环外沿`（B18：旧默认 0.02
+  让第一条带盖住节点环，灰色叠灰色看不出来）。节点环默认占 `r ∈ [1, 1.04]`
+  （`geom_node_arc(offset = 0)`，B34：环脚与飘带脚齐平），故 `track_offset ≥ 0.04`。
 - 轨道带起点是**累计**宽度：`r0_i = 1 + offset + Σ_{j<i}(width_j + offset)`（B18 的根因）。
 - 布局是数据：角度只有一个来源（layout 表），屏幕角只有一个所有者（`CoordCircos$screen_angle()`），
   geom 不得自己 `atan2`。
