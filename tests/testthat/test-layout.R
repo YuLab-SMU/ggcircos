@@ -23,6 +23,75 @@ test_that("layout angles satisfy the documented invariants", {
     }
 })
 
+test_that("self-check rejects corrupted allocated arcs and misplaced seams (R7)", {
+    nodes <- data.frame(id = letters[1:4], sector = c("A", "A", "B", "B"))
+    lay <- circos_layout(data.frame(from = "a", to = "d"), nodes = nodes,
+                         sectors = "sector", start = 5.9)
+    nd <- layout_nodes(lay)
+    lk <- layout_links(lay)
+    pm <- layout_params(lay)
+    g <- pm$gap_eff * 2 * pi
+    sg <- pm$sector_gap_eff * 2 * pi
+    check <- function(arcs) ggcircos:::check_layout_invariants(arcs, lk, g, sg)
+    expect_true(check(nd))
+    expect_equal((nd$theta1 - nd$theta0) %% (2 * pi), nd$width,
+                 tolerance = 1e-9)
+    # both ends of each sector carry a seam, including the one across the
+    # start angle (B33): A,A,B,B -> seams after the 2nd and the 4th node
+    expect_equal((c(nd$theta0[-1], nd$theta0[1]) - nd$theta1) %% (2 * pi),
+                 g + c(0, sg, 0, sg), tolerance = 1e-9)
+
+    # Width and geometry disagree even though the old sum(width) check passes.
+    bad <- nd
+    bad$theta1[1] <- (bad$theta1[1] + 0.01) %% (2 * pi)
+    expect_error(check(bad), class = "ggcircos_error_internal")
+
+    # Move the sector seam to an ordinary neighbour, retaining the total gap.
+    bad <- nd
+    bad$theta0[3] <- (bad$theta0[3] - sg) %% (2 * pi)
+    bad$theta1[3] <- (bad$theta1[3] - sg) %% (2 * pi)
+    bad$theta[3] <- (bad$theta[3] - sg) %% (2 * pi)
+    expect_error(check(bad), class = "ggcircos_error_internal")
+
+    # A balanced metadata change also preserves the old closure identity.
+    bad <- nd
+    bad$width[1:2] <- bad$width[1:2] + c(0.01, -0.01)
+    expect_error(check(bad), class = "ggcircos_error_internal")
+    bad <- nd
+    bad$theta0[1] <- NA_real_
+    expect_error(check(bad), class = "ggcircos_error_internal")
+
+    lk$theta0[1] <- -1
+    expect_error(ggcircos:::check_layout_invariants(nd, lk, g, sg),
+                 class = "ggcircos_error_internal")
+})
+
+test_that("a sector is a closed block: both of its ends get a seam (B33)", {
+    nodes <- data.frame(
+        id = letters[1:6],
+        sector = c("A", "A", "A", "B", "B", "B"),
+        stringsAsFactors = FALSE
+    )
+    links <- data.frame(
+        from = c("a", "d"), to = c("e", "b"), stringsAsFactors = FALSE
+    )
+    lay <- circos_layout(links, nodes = nodes, sectors = "sector",
+                         gap = 0.005, sector_gap = 0.1)
+    nd <- layout_nodes(lay)
+    pm <- layout_params(lay)
+    g <- pm$gap_eff * 2 * pi
+    sg <- pm$sector_gap_eff * 2 * pi
+    gaps <- ggcircos:::wrap_2pi(c(nd$theta0[-1], nd$theta0[1]) - nd$theta1)
+
+    # one wide seam at each end of each block, wrap seam included; otherwise
+    # the ring reads as a single arc with one bite out of it
+    expect_equal(sum(abs(gaps - (g + sg)) < 1e-9), 2L)
+    expect_equal(sum(abs(gaps - g) < 1e-9), 4L)
+    expect_true(nd$sector[1] != nd$sector[nrow(nd)])
+    # and the ring still closes exactly
+    expect_equal(sum(nd$width) + sum(gaps), 2 * pi, tolerance = 1e-9)
+})
+
 test_that("slots sit inside their node arcs and do not overlap", {
     lay <- circos_layout(cor(mtcars))
     nd <- layout_nodes(lay)

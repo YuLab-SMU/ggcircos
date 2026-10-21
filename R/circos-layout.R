@@ -309,12 +309,12 @@ circos_layout_build <- function(links,
     nd$sector <- circos_assign_sectors(nd, sectors)
     nd <- circos_apply_order(nd, links, order)
     # A sector is a *contiguous run* of node arcs: the angle budget reserves
-    # exactly S-1 sector seams (spec 4.3-4) and the sector span is taken from
-    # the run's two ends (spec 4.6-5). An ordering that interleaves two
-    # sectors (`order = "hclust"` with `sectors =`, or an explicit vector)
-    # would insert one seam per switch, overflow the turn and overlap arcs --
-    # so the sectors are grouped here and the requested order is honoured
-    # *inside* each one (R1).
+    # one seam at each end of every sector (spec 4.3-4) and the sector span is
+    # taken from the run's two ends (spec 4.6-5). An ordering that interleaves
+    # two sectors (`order = "hclust"` with `sectors =`, or an explicit vector)
+    # would insert extra seams, overflow the turn and overlap arcs -- so the
+    # sectors are grouped here and the requested order is honoured *inside*
+    # each one (R1).
     nd <- circos_group_sectors(nd)
 
     n <- nrow(nd)
@@ -329,16 +329,21 @@ circos_layout_build <- function(links,
             )
         )
     }
-    n_sectors <- length(unique(nd$sector))
+    # A sector is a *closed block*: both of its ends carry a seam, including
+    # the one that straddles `start`. Reserving only S-1 seams left the wrap
+    # boundary looking like an ordinary node gap, so two genomes read as one
+    # ring with a single bite out of it instead of two blocks (B33).
+    boundary <- c(nd$sector[-1] != nd$sector[-n], nd$sector[1] != nd$sector[n])
+    n_seams <- sum(boundary)
     # the gap budget is a *fraction of a turn* spent per seam; with many
     # nodes a literal default swallows the whole circle. Both gaps are
     # clamped to a fifth of the turn overall, so a batch of matrices of any
     # size still yields a readable ring out of the box (spec §4.3-4).
     gap_eff <- min(gap, 0.2 / n)
-    sector_gap_eff <- min(sector_gap, 0.2 / max(n_sectors - 1L, 1L))
+    sector_gap_eff <- min(sector_gap, 0.2 / max(n_seams, 1L))
     g <- gap_eff * 2 * pi
     sg <- sector_gap_eff * 2 * pi
-    span <- 2 * pi - n * g - (n_sectors - 1) * sg
+    span <- 2 * pi - n * g - n_seams * sg
     if (span <= 0) {
         ggcircos_abort(
             "layout",
@@ -346,7 +351,7 @@ circos_layout_build <- function(links,
                 "Gap too large: {.arg gap}*{n} plus {.arg sector_gap}*{k} fills a whole turn.",
                 i = "Use a smaller {.arg gap} / {.arg sector_gap}."
             ),
-            n = n, k = n_sectors - 1L
+            n = n, k = n_seams
         )
     }
     # Link weights make the geometry carry the values, the way circlize's
@@ -374,9 +379,8 @@ circos_layout_build <- function(links,
         )
     }
     w <- span * nw / sum(nw)
-    switch_sector <- c(FALSE, nd$sector[-1] != nd$sector[-n])
     if (n > 1L) {
-        after <- c(rep(g, n - 1L), 0) + ifelse(switch_sector, sg, 0)
+        after <- rep(g, n) + ifelse(boundary, sg, 0)
         offset <- c(0, cumsum((w + after)[-n]))
     } else {
         offset <- 0
@@ -822,16 +826,20 @@ circos_track_bands <- function(tracks, track_offset, radius = 1) {
 #' @keywords internal
 #' @noRd
 check_layout_invariants <- function(nd, links, g, sg) {
-    in_turn <- function(v) all(v >= 0 & v < 2 * pi)
-    # The arcs plus the *actual* seams must close the turn. The old check
-    # recomputed the budget formula from the numbers that produced it, so it
-    # was a tautology and could not catch an overflow (review R7).
-    nxt <- c(nd$theta0[-1], nd$theta0[1])
-    gaps <- wrap_2pi(nxt - nd$theta1)
-    seam_ok <- all(abs(gaps - g) < 1e-9 | abs(gaps - (g + sg)) < 1e-9)
-    closes <- abs(sum(nd$width) + sum(gaps) - 2 * pi) < 1e-9
+    in_turn <- function(v) isTRUE(all(is.finite(v) & v >= 0 & v < 2 * pi))
+    # Check the allocated angles, not the budget formula that produced them.
+    widths <- wrap_2pi(nd$theta1 - nd$theta0)
+    gaps <- wrap_2pi(c(nd$theta0[-1], nd$theta0[1]) - nd$theta1)
+    boundary <- c(
+        nd$sector[-1] != nd$sector[-nrow(nd)],
+        nd$sector[1] != nd$sector[nrow(nd)]
+    )
+    expected_gaps <- g + as.numeric(boundary) * sg
+    arcs_ok <- isTRUE(all(abs(widths - nd$width) < 1e-9))
+    seams_ok <- isTRUE(all(abs(gaps - expected_gaps) < 1e-9))
+    closes <- isTRUE(abs(sum(widths) + sum(gaps) - 2 * pi) < 1e-9)
     if (!(in_turn(nd$theta) && in_turn(nd$theta0) && in_turn(nd$theta1) &&
-          seam_ok && closes)) {
+          arcs_ok && seams_ok && closes)) {
         ggcircos_abort(
             "internal",
             c("The layout broke an invariant: the arcs and seams do not close a turn.",
@@ -840,16 +848,20 @@ check_layout_invariants <- function(nd, links, g, sg) {
     }
     if (nrow(links) > 0L) {
         arc <- (links$theta1 - links$theta0) %% (2 * pi)
-        stopifnot(
-            in_turn(links$theta0), in_turn(links$theta1),
-            in_turn(links$theta_end0), in_turn(links$theta_end1)
-        )
-        stopifnot(all(arc <= nd$width[match(links$from, nd$id)] + 1e-9))
-        stopifnot(all(
-            ((links$theta_end1 - links$theta_end0) %% (2 * pi)) <=
-                nd$width[match(links$to, nd$id)] + 1e-9
-        ))
-        stopifnot(all(arc <= links$slot_span + 1e-9))
+        slots_ok <- in_turn(links$theta0) && in_turn(links$theta1) &&
+            in_turn(links$theta_end0) && in_turn(links$theta_end1) &&
+            isTRUE(all(arc <= nd$width[match(links$from, nd$id)] + 1e-9)) &&
+            isTRUE(all(
+                ((links$theta_end1 - links$theta_end0) %% (2 * pi)) <=
+                    nd$width[match(links$to, nd$id)] + 1e-9
+            )) && isTRUE(all(arc <= links$slot_span + 1e-9))
+        if (!slots_ok) {
+            ggcircos_abort(
+                "internal",
+                c("The layout broke an invariant: link slots exceed their node arcs.",
+                  i = "This is a ggcircos bug; please report it with the data that triggered it.")
+            )
+        }
     }
     invisible(TRUE)
 }

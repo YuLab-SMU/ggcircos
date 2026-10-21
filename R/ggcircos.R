@@ -108,8 +108,11 @@ ggcircos <- function(data,
         # would silently delete a node's track
         scale_y_continuous(limits = c(0, 2 * pi), expand = c(0, 0),
                            oob = scales::squish) +
+        # Track values may exceed the *radial* plot limits before their
+        # position maps them into a band. Squishing here destroys the values
+        # before PositionTrack sees them (notably aes(x = value)).
         scale_x_continuous(limits = xlim, expand = c(0, 0),
-                           oob = scales::squish) +
+                           oob = scales::oob_keep) +
         theme_circos()
 
     if (layout == "arc") {
