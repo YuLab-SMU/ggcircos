@@ -25,6 +25,31 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   `layout_params()` export the layout as plain data frames.
 * `facet_wrap()` splits chords per panel while the node ring is shared.
 
+## Rendering
+
+* Chords use `circlize`'s geometry: a quadratic Bezier in the plane, sampled
+  by arc length, closed by the two node arcs. Ribbons keep their width across
+  and meet the ring flush.
+* Ribbons carry no outline by default (`colour = NA`, matching circlize's
+  `link.border = NA`); `type = "line"` chords draw black.
+* Overlapping ribbons blend by alpha, so crossings read as a darker tint
+  rather than a hole.
+* `geom_node_arc()` sits at `r = 1` (`offset = 0`), sharing an edge with the
+  ribbon feet. Pass `offset =` for a visible gap.
+
+## Behaviour notes
+
+* Each sector carries a wider gap at both of its ends, so sectors read as
+  separate blocks. The angular budget reserves one seam per sector, and
+  `sector_gap` is clamped to `0.2 / S`.
+* `scales = "free"` on a track scales each node against its own range, not
+  against the whole column.
+* `geom_node_text()` rejects `aes(angle = )` with `ggcircos_error_data`, since
+  the coordinate owns the rotation; use `rotate = TRUE`.
+* `position_track()` holds only vectors (`band`, the node column name, the
+  normalisation settings), so one position can be shared by several layers.
+  A layer may take its band from it instead of repeating `band =`.
+
 ## Not yet
 
 Self-loops, label collision avoidance, violin/density tracks, angular axes,
