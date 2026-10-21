@@ -199,3 +199,22 @@ test_that("rotated labels run along the ring, upright on both halves", {
     # and the angles must vary: a constant would mean the rotation is ignored
     expect_gt(length(unique(round(as.numeric(txt$rot), 3))), 3)
 })
+
+test_that("an angle aesthetic on node labels is refused, not ignored (R8)", {
+    # The rotation is the coordinate's business (spec 5.4). Accepting
+    # `aes(angle = )` and then overriding it would make the argument look
+    # effective while doing nothing, which is the quiet failure this package
+    # avoids elsewhere.
+    expect_error(
+        ggcircos(cor(mtcars)[1:4, 1:4]) +
+            geom_node_text(ggplot2::aes(angle = 45)),
+        class = "ggcircos_error_data"
+    )
+    # the supported switch still works
+    expect_s3_class(
+        ggplot2::ggplotGrob(
+            ggcircos(cor(mtcars)[1:4, 1:4]) + geom_node_text(rotate = TRUE)
+        ),
+        "gtable"
+    )
+})

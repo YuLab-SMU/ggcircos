@@ -204,7 +204,9 @@ structure(
    `gap = min(gap_user, 0.2 / N)` 计算：节点少时用 `gap_user = 0.01`（行为不变），
    节点多时自动收窄，保证 `N*G ≤ 0.2`（留 20% 圈给缝）。`sector_gap` 同理
    收窄到 `min(sector_gap_user, 0.2 / max(S, 1))`，保证 `S*SG ≤ 0.2`。
-   生效值记在 `layout_params()$gap` 里（不是用户传入值）。
+   **⚠ 决策（R13）**：`layout_params()` **同时**给用户值和生效值两列——
+   `gap` / `sector_gap` 是调用者传入的，`gap_eff` / `sector_gap_eff` 是收窄后真正用掉的。
+   覆盖成一个字段会让人无法回答"我传的 0.5 到底变成了多少"；双列两者都能查到。
 5. **节点弧**：每个节点宽 `w = span / N`；**带 `weight` 时改为 `w_i = span · Σ|w|_i / ΣΣ|w|`**
    （节点弧按它承载的权重分配，和 circlize 的 `chordDiagram()` 一致；见 §4.6-2）。第 i 个节点
    `theta0 = start + 已用角度`，`theta1 = theta0 + w`，节点之间加 `G`；每个 sector 块的**两端**
@@ -681,7 +683,7 @@ position_track(band, node_table, stack = FALSE,
 
 ```r
 geom_track_axis(band, breaks = NULL, limits, labels = waiver(),
-                text.size = 3, line.size = 0.2, tick.length = 0.01, ...)
+                text.size = 3, line.size = 0.2, tick.length = 0.02, ...)
 ```
 
 - **`limits` 必填**（明确不猜别的层的数据范围）。
@@ -1083,7 +1085,7 @@ circos_layout
 ├── sectors : sector theta0 theta1 theta n_nodes r crosses_zero
 ├── tracks  : track width r0 r1
 └── params  : gap sector_gap slot_fill start track_offset radius layout
-              （gap / sector_gap 是**生效值**，不是用户传入值）
+              （gap / sector_gap 是用户值；gap_eff / sector_gap_eff 是生效值，R13）
 
 槽位（§4.6，按侧分配）：
   节点弧 [theta0, theta1] 宽 node_w；from 侧有 d_out 条边、to 侧有 d_in 条边

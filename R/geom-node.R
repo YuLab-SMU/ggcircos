@@ -92,6 +92,20 @@ geom_node_text <- function(mapping = NULL,
                            na.rm = FALSE,
                            show.legend = NA,
                            inherit.aes = FALSE) {
+    # `angle` is decided by the coordinate (spec 5.4, `screen_angle()`), so a
+    # user mapping would either be overridden or silently ignored. Say so
+    # instead: an `aes(angle = )` that does nothing is the kind of quiet
+    # failure this package tries not to have (R8).
+    if ("angle" %in% names(mapping)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.fn geom_node_text} does not take an {.field angle} aesthetic.",
+                i = "The rotation comes from {.arg rotate} and the coordinate; \
+                    use {.code rotate = TRUE} to run the labels along the circle."
+            )
+        )
+    }
     tag_layer(
         layer(
             data = data,
