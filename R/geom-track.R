@@ -122,12 +122,7 @@ geom_track <- function(mapping = NULL,
         # `x` still needs a mapping (GeomRect derives xmin/xmax from it), but
         # it must point at a column that is NOT called `x`: a data column
         # literally named `x` wins over the mapping and zeroes every value.
-        if (identical(value_col, "x")) {
-            data$.circos_value <- data$x
-            data$x <- NULL
-            value_col <- ".circos_value"
-        }
-        data <- structure(data, circos_has_value = TRUE)
+        data$.circos_has_value <- TRUE
         value_name <- value_col
         mapping <- if (is.null(mapping)) ggplot2::aes() else mapping
         mapping$x <- rlang::sym(value_col)
@@ -265,7 +260,7 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", ...) {
     # value into 0 -- the bug that hid the negative-input check (review R4).
     # `geom_track(value = )` marks the layer with `.circos_has_value`, which
     # survives to here because `data` is the layer's own frame.
-    if (!"x" %in% names(data) && !isTRUE(attr(data, "circos_has_value"))) {
+    if (!"x" %in% names(data) && !isTRUE(data$.circos_has_value)) {
         data$x <- 0  # placeholder; the position owns it
     }
     data$y <- theta
@@ -415,7 +410,11 @@ PositionTrack <- ggproto("PositionTrack", Position,
         }
         r0 <- self$band[1] + (self$offset %||% 0)
         r1 <- self$band[2]
-        node_values <- if (!is.null(self$node) && self$node %in% names(data)) {
+        node_values <- if (!is.null(self$node_angles) && "y" %in% names(data)) {
+            self$node_values[match(data$y, self$node_angles)]
+        } else if (length(self$node_values) == nrow(data)) {
+            self$node_values
+        } else if (!is.null(self$node) && self$node %in% names(data)) {
             as.character(data[[self$node]])
         } else {
             rep("all", nrow(data))
@@ -507,17 +506,31 @@ track_map_values <- function(data, r0, r1, self,
             data[[nm]] <- rescale_from(data[[nm]], base, top, r0, r1)
         }
     } else {
+        # "free" is *per node*: each node's values are normalised against
+        # that node's own range, so a node with 1 and a node with 100 both
+        # fill their band. Normalising against the whole column instead made
+        # "free" mean "the range comes from the data", which is what "fixed"
+        # with a data-derived limit would mean, and every node but the
+        # largest collapsed into a sliver (review R3).
         base <- self$baseline
-        for (nm in c("x", span_x)) {
-            v <- data[[nm]]
+        key <- as.character(group_values %||% rep(1L, nrow(data)))
+        cols <- c("x", span_x)
+        for (k in unique(key)) {
+            i <- which(key == k)
+            vals <- unlist(data[i, cols, drop = FALSE], use.names = FALSE)
+            vals <- vals[is.finite(vals)]
+            if (!length(vals)) next
             b <- if (!is.null(base)) {
                 base
-            } else if (all(v >= 0, na.rm = TRUE)) {
+            } else if (all(vals >= 0)) {
                 0
             } else {
-                min(v, na.rm = TRUE)
+                min(vals)
             }
-            data[[nm]] <- rescale_from(v, b, max(v, na.rm = TRUE), r0, r1)
+            top <- max(vals)
+            for (nm in cols) {
+                data[[nm]][i] <- rescale_from(data[[nm]][i], b, top, r0, r1)
+            }
         }
     }
     if (anchored) {

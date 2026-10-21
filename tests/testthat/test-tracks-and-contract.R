@@ -247,21 +247,25 @@ test_that("the axis draws lines, not white blobs (B8)", {
     expect_equal(length(unique(round(radii, 6))), length(radii))
 })
 
-test_that("continuous fill does not explode into one grob per link (B11)", {
+test_that("overlapping ribbons blend instead of punching a white hole (B35)", {
+    # Batching links into a single `grid.path()` needs a fill rule, and both
+    # are wrong here: `"evenodd"` empties the intersection of two ribbons --
+    # a crossing becomes white, which is the "white patch in the middle" bug --
+    # and `"winding"` also cancels a link that folds over itself. Each link is
+    # therefore drawn as its own grob, the way circlize draws one `polygon()`
+    # per link, so overlaps blend by alpha.
     m <- cor(mtcars)
-    grobs_of <- function(p) {
+    chord_grobs <- function(p) {
         g <- ggplot2::ggplotGrob(p)
         idx <- which(vapply(g$grobs, function(x) !is.null(x$name) && grepl("^panel", x$name), logical(1)))
         ch <- g$grobs[[idx[1]]]$children
         k <- which(vapply(ch, function(x) !is.null(x$name) && grepl("chord", x$name), logical(1)))
-        length(ch[[k]]$children)
+        ch[[k]]$children
     }
     n_links <- nrow(ggcircos:::layout_links(ggcircos:::circos_layout(m)))
     expect_gt(n_links, 24L)
-    expect_lt(grobs_of(ggcircos(m, order = "hclust") + geom_chord(aes(fill = r))), 25L)
-    # the cheap paths must stay cheap
-    expect_equal(grobs_of(ggcircos(m) + geom_chord()), 1L)
-    expect_equal(grobs_of(ggcircos(m) + geom_chord(type = "line")), 1L)
+    # one grob per link: a crossing cannot be emptied by a shared fill rule
+    expect_equal(length(chord_grobs(ggcircos(m, order = "hclust") + geom_chord(aes(fill = r)))), n_links)
 })
 
 test_that("graph inputs keep their edge attributes (B19)", {
@@ -431,6 +435,106 @@ test_that("both edges of a ribbon are the same curve entered from opposite ends 
     }
 })
 
+test_that("a ribbon outline is a closed band, ported from circlize (B34)", {
+    # The outline is a straight port of `circlize::circos.link()`: two
+    # quadratic Beziers in the plane between the feet, closed by the two node
+    # arcs. Every earlier hand-rolled version (a spine offset in angle, a
+    # spine offset in the plane, two edges from opposite corners) produced a
+    # recognisably different band -- a pinched waist, a hole in the middle, or
+    # edges that crossed -- so what is pinned here is the shape contract
+    # itself, plus a numeric check against circlize's own helpers when it is
+    # installed.
+    m <- cor(mtcars)
+    p <- ggcircos(m, order = "hclust") + geom_chord()
+    b <- ggplot2::ggplot_build(p)
+    d <- b$data[[1]]
+    paths <- ggcircos:::chord_paths_polar(d, "ribbon", NA, 40)
+
+    for (id in unique(paths$.id)) {
+        q <- paths[paths$.id == id, ]
+        # 1. The polygon closes. It is closed in the *plane*, so the angles may
+        #    differ by a whole turn: a link whose feet face each other passes
+        #    through the centre and its unwrapped angle winds once.
+        dx <- q$x[1] - q$x[nrow(q)]
+        dy_lin <- q$y[1] - q$y[nrow(q)]
+        dy_wrapped <- ggcircos:::wrap_pi(dy_lin)
+        expect_lt(abs(dx), 1e-9)
+        expect_lt(abs(dy_wrapped), 1e-9)
+        # 2. It never leaves the ring.
+        expect_true(all(q$x <= 1 + 1e-9))
+        expect_true(all(q$x >= 0))
+        # 3. No whole-turn spike: `atan2()` alone leaves one at the seam, and
+        #    a spike draws a wedge straight across the figure.
+        expect_lt(max(abs(diff(q$y))), pi)
+        # 4. Both feet are attached: the arc vertices really sit at r = 1.
+        expect_gt(sum(abs(q$x - 1) < 1e-9), 4L)
+        # 5. The band has area but is not the whole disc (a wrong pairing
+        #    between corners produces exactly 2*pi -- the entire circle).
+        area <- {
+            x <- q$x * cos(q$y); y <- q$x * sin(q$y); n <- length(x)
+            abs(sum(x[-n] * y[-1] - x[-1] * y[-n])) / 2
+        }
+        expect_gt(area, 1e-3)
+        expect_lt(area, 0.9 * pi)
+    }
+})
+
+test_that("a ribbon covers a band's worth of area, not the whole disc (B34)", {
+    # The failure mode this pins down: sweeping the closing arcs in the
+    # increasing direction (as `circlize:::arc.points()` does) turns a foot a
+    # few degrees wide into a 350-degree detour whenever the two corners
+    # arrive in the other order. The polygon then encloses the whole disc --
+    # measured area 6.0-6.2 per link (2*pi = 6.28) -- and every ribbon looks
+    # like a filled circle. circlize's own ribbon for one link measures 0.24
+    # on the unit circle.
+    m <- cor(mtcars)
+    p <- ggcircos(m, order = "hclust") + geom_chord()
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    area <- function(q) {
+        x <- q[, 1]; y <- q[, 2]; n <- length(x)
+        abs(sum(x[-n] * y[-1] - x[-1] * y[-n])) / 2
+    }
+    ar <- vapply(seq_len(nrow(d)), function(i) {
+        area(ggcircos:::chord_ribbon_outline(
+            d$theta0[i], d$theta1[i], d$theta_end0[i], d$theta_end1[i]
+        ))
+    }, numeric(1))
+    expect_true(all(ar > 1e-3))
+    # a band, not the disc: well under half of pi, which is what a ribbon that
+    # encloses the centre would reach
+    expect_true(all(ar < 0.5 * pi))
+    expect_lt(stats::median(ar), 0.3)
+})
+
+test_that("free track scales are normalised independently per node (R3)", {
+    m <- cor(mtcars)
+    vals <- data.frame(
+        id = rep(colnames(m)[1:2], each = 2L),
+        value = c(1, 2, 50, 100),
+        stringsAsFactors = FALSE
+    )
+    p <- ggcircos(m, tracks = c(v = 0.2)) +
+        geom_track(data = vals, aes(x = value), node = id, band = "v")
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+
+    expect_equal(d$xmax, c(1.16, 1.26, 1.16, 1.26), tolerance = 1e-6)
+
+    box <- data.frame(
+        id = rep(colnames(m)[1:2], each = 4L),
+        value = c(1, 2, 3, 4, 10, 20, 30, 40),
+        stringsAsFactors = FALSE
+    )
+    bx <- ggplot2::ggplot_build(
+        ggcircos(m, tracks = c(v = 0.2)) +
+            geom_track(data = box, aes(x = value), node = id,
+                       geom = "boxplot", band = "v")
+    )$data[[1]]
+    expect_equal(nrow(bx), 2L)
+    expect_equal(bx$xmax, c(1.26, 1.26), tolerance = 1e-6)
+    expect_true(all(bx$xmin < bx$x & bx$x < bx$xmax))
+    expect_gt(diff(sort(bx$x)), 0)
+})
+
 test_that("geom_track(value = ) reaches the position and guards stacking (R4)", {
     m <- cor(mtcars)
     base <- function() ggcircos(m, tracks = c(v = 0.2))
@@ -456,10 +560,18 @@ test_that("geom_track(value = ) reaches the position and guards stacking (R4)", 
     )
 
     # a data column that happens to be called `x` must not shadow the value
-    shadow <- data.frame(id = colnames(m), x = seq(0.1, 1, length.out = 11))
+    shadow <- data.frame(
+        id = rep(colnames(m)[1:2], each = 2L),
+        x = c(0.1, 0.2, 0.5, 1.0),
+        stringsAsFactors = FALSE
+    )
     got <- ggplot2::ggplot_build(
         base() + geom_track(data = shadow, value = x, node = id, band = "v")
     )$data[[1]]
+    ref <- ggplot2::ggplot_build(
+        base() + geom_track(data = shadow, aes(x = x), node = id, band = "v")
+    )$data[[1]]
+    expect_equal(got$x, ref$x)
     expect_gt(length(unique(round(got$x, 6))), 1L)
 
     # and `value` must name a real column

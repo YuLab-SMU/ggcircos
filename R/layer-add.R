@@ -300,6 +300,10 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     object$mapping <- merge_mapping(
         object$mapping, track_defaults(spec$rect)
     )
+    if (identical(params$geom_name, "boxplot") &&
+        !is.null(params$node) && !"node" %in% names(object$mapping)) {
+        object$mapping$node <- rlang::sym(params$node)
+    }
     # `geom_track(value = )` hands the numbers to the position directly. The
     # alternative -- mapping `x` -- cannot work: ggplot2 resolves aesthetics
     # before the position runs and GeomRect's setup_data derives `x` from
@@ -307,6 +311,13 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     # plain snapshot, in layer-data order.
     if (!is.null(params$value_name)) {
         object$position$values <- as.numeric(object$data[[params$value_name]])
+    }
+    # The node ids travel the same way: ggplot2 keeps only aesthetics in the
+    # frame it hands the position, so `data[[node]]` is gone by then and
+    # per-node scaling fell back to a single group (review R3).
+    if (!is.null(params$node) && params$node %in% names(object$data)) {
+        object$position$node_values <- as.character(object$data[[params$node]])
+        object$position$node_angles <- object$data$y
     }
     # the position keeps only the resolved numeric band (a plain vector); the
     # layout itself never travels into it (spec §8.2). A position that came
