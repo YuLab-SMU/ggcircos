@@ -272,24 +272,30 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_valu
         data$x <- 0  # placeholder; the position owns it
     }
     data$y <- theta
-    if (identical(geom, "tile")) {
-        # A tile track is a *sequence of bins* along the node's arc: rows that
-        # share a node split its arc evenly, in data order. Overlapping them
-        # all on the full arc (the old behaviour) makes a heatmap track
-        # unusable, which is the whole point of the geometry.
-        #
-        # The angular extent goes through ymin/ymax, not the `width`/`height`
-        # aesthetics: those are aesthetics, and a data column with an
-        # aesthetic's name is overwritten by the layer's default_aes.
+    # Rows that share a node split its arc evenly, in data order. This is a
+    # *sequence along the arc* for every geometry that draws one mark per row:
+    # a tile track is a heatmap, an area/line track is a coverage profile, and
+    # a column track with several measurements per node is a brush of bars.
+    # Only `boxplot` is exempt: it aggregates the rows down to one mark per
+    # node, so that mark spans the whole arc.
+    #
+    # With one row per node the bin is the whole `width` share of the arc, so
+    # the split is bit-identical to centring on `theta` and nothing changes for
+    # the common single-value track.
+    #
+    # The angular extent goes through ymin/ymax, not the `width`/`height`
+    # aesthetics: those are aesthetics, and a data column with an aesthetic's
+    # name is overwritten by the layer's default_aes.
+    if (identical(geom, "boxplot")) {
+        half <- arc * width / 2
+        data$ymin <- theta - half
+        data$ymax <- theta + half
+    } else {
         k <- as.numeric(stats::ave(seq_along(idx), idx, FUN = seq_along))
         m <- as.numeric(stats::ave(seq_along(idx), idx, FUN = length))
         bin_w <- arc * width / m
         data$ymin <- nt$theta0[idx] + (arc - bin_w * m) / 2 + (k - 1) * bin_w
         data$ymax <- data$ymin + bin_w
-    } else {
-        half <- arc * width / 2
-        data$ymin <- theta - half
-        data$ymax <- theta + half
     }
     data
 }

@@ -613,8 +613,14 @@ geom_track(
 | `"area"` | 是 | `"identity"` | `GeomArea` | |
 | `"boxplot"` | 是 | `StatTrackBox`（本包） | `GeomCrossbar` | 分位数由 stat 算，不用 `stat_boxplot` |
 | `"point"` | 否（缺省 = 带中心） | `"identity"` | `GeomPoint` | 标数值就写 `x` |
-| `"tile"` | 否 | `"identity"` | `GeomTrackTile` | 热图轨道：径向填满 band（`band_fill`），同节点的行按数据顺序等分该节点弧（B7） |
+| `"tile"` | 否 | `"identity"` | `GeomTrackTile` | 热图轨道：径向填满 band（`band_fill`） |
 | `"text"` | 否（缺省 = 带中心） | `"identity"` | `GeomText` | |
+
+**同节点的多行等分该节点弧（B37）**：除 `"boxplot"` 外，每个节点的第 `k` 行占
+`theta0 + (arc - bin_w·m)/2 + (k-1)·bin_w`，`bin_w = arc · width / m`（`m` 为该节点行数）。
+tile 靠它出热图，area/line 靠它出覆盖度剖面，col 靠它把同一节点的多次测量画成一排刷子。
+`boxplot` 例外，因为 `StatTrackBox` 先把多行聚合成一个标记，那个标记该占满整条弧。
+**每节点只有一行时 `bin_w = arc · width`，与以 `theta` 为中心逐位相同**，单值轨道不受影响。
 
 不在表里 → `ggcircos_error_data`（消息列出可用值）。`"violin"` v0.1 不支持（§17-7）。
 `x` 必需而缺失时报：`"geom_track(geom = 'col') needs an x aesthetic; map the value column, e.g. aes(x = value)."`

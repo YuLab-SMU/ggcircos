@@ -37,6 +37,15 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
 * `geom_node_arc()` sits at `r = 1` (`offset = 0`), sharing an edge with the
   ribbon feet. Pass `offset =` for a visible gap.
 
+## Tracks
+
+* A track with several rows per node now splits the node's arc between them,
+  whatever the geometry. `geom = "col"` used to stack every row on the whole
+  arc, so three measurements per node drew as one solid band with no relief,
+  and `geom = "area"` could not express a coverage profile at all. Only
+  `geom = "boxplot"` keeps the full arc, since its stat aggregates the rows
+  into one mark. A track with one row per node is unchanged, bin for bin.
+
 ## Layering
 
 * `ggcircos()` returns a plot that carries the link table but no mapping.

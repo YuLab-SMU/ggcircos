@@ -647,6 +647,27 @@ ggcircos(m) + geom_point(data = nd, aes(x = r, y = theta))
 inherit.aes = FALSE (D3)"`（断言 `length(plot$mapping) == 0`，并逐个叠
 point/text/label/tile/rect/segment/path/violin/annotate 与 rds 往返）。
 
+### B37. 只有 tile 按行切分节点弧，col/area/bar 多行叠成实心带 —— **已修（2026-10-21）**
+
+写公众号示例时发现：给每个节点 3 个值、用 `geom = "col"`，轨道出来是一条等高实心带，
+没有起伏。查出来 `track_angles()` 的按行等分弧只写在 `if (identical(geom, "tile"))`
+分支里，其余 geom 一律 `ymin/ymax = theta ± arc*width/2`，即**每一行都占满整条节点弧**。
+于是同一节点的 3 根柱子完全重叠，只看得见最高的那根；`area` 更没法画覆盖度剖面，
+而那恰恰是轨道最典型的用途。
+
+修法：切分弧对所有 geom 生效，只有 `boxplot` 例外（`StatTrackBox` 先把多行聚合成
+一个标记，那个标记该占满整条弧）。
+
+**每节点只有一行时 `bin_w = arc * width`，与以 `theta` 为中心逐位相同**（实测误差
+4.4e-16），所以最常见的单值轨道不受影响。
+
+回归测试：`"multi-row tracks split the node arc for every non-aggregating geom (B37)"`
+（col/area/bar 的 bin 宽 = 弧/25、无缝拼满节点弧、boxplot 保持整弧、单行逐位不变）。
+受影响快照：`stacked-tracks`、`track-axis`（都是每节点多行的 col 轨道）。
+
+**教训**：B7 修 tile 时把切分逻辑塞进了 tile 分支，其实那是「一个节点有多行」的性质，
+不是 tile 的性质。geom 分支只该用来决定 `band_fill`/聚合这类真差异。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

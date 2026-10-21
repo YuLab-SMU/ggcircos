@@ -607,3 +607,53 @@ test_that("one position object can be shared by two layers unharmed (R9)", {
     expect_null(pos$values)
     expect_null(pos$node_values)
 })
+
+test_that("multi-row tracks split the node arc for every non-aggregating geom (B37)", {
+    # track_angles() used to bin the arc for `tile` only. A col/area/bar track
+    # with several measurements per node then stacked every row on the whole
+    # arc, so the tallest one hid the rest and the track read as a solid band
+    # with no relief.
+    m <- cor(mtcars)[1:5, 1:5]
+    nd <- layout_nodes(circos_layout(m, order = "hclust"))
+    set.seed(5)
+    prof <- data.frame(id = rep(nd$id, each = 25), value = runif(5 * 25, .1, .95))
+    base <- ggcircos(m, order = "hclust", tracks = c(d = 0.18)) + geom_node_arc()
+
+    for (g in c("col", "area", "bar")) {
+        d <- ggplot2::ggplot_build(
+            base + geom_track(data = prof, aes(x = value), node = id,
+                              band = "d", geom = g)
+        )$data[[2]]
+        span <- d$ymax - d$ymin
+        # 25 rows per node, so each bin is a 25th of the arc, not the whole of it
+        expect_lt(max(span), nd$width[1] / 5)
+        expect_equal(max(span), min(span), tolerance = 1e-9)
+        # bins tile each node's arc without gaps or overlap
+        for (i in seq_len(nrow(nd))) {
+            s <- d[which(prof$id == nd$id[i]), ]
+            s <- s[order(s$ymin), ]
+            expect_equal(sum(s$ymax - s$ymin), 0.9 * nd$width[i], tolerance = 1e-9)
+            if (nrow(s) > 1) {
+                expect_equal(s$ymin[-1], s$ymax[-nrow(s)], tolerance = 1e-9)
+            }
+        }
+    }
+
+    # boxplot aggregates to one mark per node, so that mark keeps the whole arc
+    bp <- ggplot2::ggplot_build(
+        base + geom_track(data = prof, aes(x = value), node = id,
+                          band = "d", geom = "boxplot")
+    )$data[[2]]
+    expect_equal(bp$ymax - bp$ymin, rep(0.9 * nd$width[1], nrow(bp)), tolerance = 1e-9)
+
+    # one row per node must be unchanged: the bin is the whole width share,
+    # bit-identical to centring on theta
+    one <- data.frame(id = nd$id, value = seq(.2, 1, length.out = 5))
+    d1 <- ggplot2::ggplot_build(
+        base + geom_track(data = one, aes(x = value), node = id,
+                          band = "d", geom = "col")
+    )$data[[2]]
+    half <- nd$width * 0.9 / 2
+    expect_equal(d1$ymin, nd$theta - half, tolerance = 1e-12)
+    expect_equal(d1$ymax, nd$theta + half, tolerance = 1e-12)
+})
