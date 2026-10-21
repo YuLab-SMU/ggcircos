@@ -14,6 +14,12 @@
 #' @param rotate Rotate the label to follow the circle. The rotation is
 #'   derived from where the coordinate actually puts the label, so it stays
 #'   correct for any `start` or `clockwise`.
+#' @param repel Push overlapping labels outward along their own radius. Labels
+#'   that would collide are staggered by a small radial step instead of
+#'   drifting sideways, which is what a circular layout needs: the angle
+#'   carries the node, so a label may only move along its own spoke.
+#'   `ggrepel` does not help here -- it resolves collisions in a rectangular
+#'   space and lines the labels up flat.
 #' @param nudge_x Radial nudge applied to the label.
 #'
 #' @return A ggplot2 layer.
@@ -88,6 +94,7 @@ geom_node_text <- function(mapping = NULL,
                            ...,
                            rotate = FALSE,
                            offset = 0.10,
+                           repel = FALSE,
                            nudge_x = 0,
                            na.rm = FALSE,
                            show.legend = NA,
@@ -118,7 +125,7 @@ geom_node_text <- function(mapping = NULL,
             params = list(na.rm = na.rm, ...)
         ),
         "ggcircos_node",
-        list(rotate = rotate, offset = offset, nudge_x = nudge_x)
+        list(rotate = rotate, offset = offset, nudge_x = nudge_x, repel = repel)
     )
 }
 
@@ -170,6 +177,45 @@ geom_node_point <- function(mapping = NULL,
         "ggcircos_node",
         list(offset = offset)
     )
+}
+
+#' Stagger colliding labels along their own spokes
+#'
+#' The angle carries the node, so a label may only move outward along its own
+#' radius. Walking the nodes in angle order, any label that lands within
+#' `1.15 * step` of the previous one moves out by `step`, which turns a crowded
+#' stretch into a staircase without moving anything off its node's direction.
+#' Resolving the collisions in the plane instead (what `ggrepel` does) lines
+#' the labels up flat and loses the circular reading.
+#' @keywords internal
+#' @noRd
+repel_node_labels <- function(object, step = 0.055) {
+    d <- object$data
+    if (is.null(d) || nrow(d) < 2L || !"r" %in% names(d)) return(object)
+    # the node table carries `theta`; the layer maps it to `y`
+    theta_col <- if ("theta" %in% names(d)) d$theta else d$y
+    if (is.null(theta_col)) return(object)
+    theta <- theta_col %% (2 * pi)
+    # an NA angle has no spoke to move along; leave it where it is
+    ok <- is.finite(theta) & is.finite(d$r)
+    if (sum(ok) < 2L) return(object)
+    idx <- which(ok)
+    idx <- idx[order(theta[idx])]
+    r <- d$r
+    # what matters is whether two labels sit closer than one line height on
+    # screen. At radius `r` an angular gap `d` is `r * d` of arc, so the
+    # threshold is a height in the same units as `step`, not a fixed angle --
+    # 60 nodes on a radius-1 ring are 0.105 rad apart, which is already
+    # comfortable, while 120 nodes are not.
+    for (k in seq.int(2L, length(idx))) {
+        prev <- idx[k - 1L]; this <- idx[k]
+        arc <- (theta[this] - theta[prev]) * r[prev]
+        if (arc < 1.15 * step) r[this] <- r[prev] + step
+    }
+    # the mapping is `r + offset`, so the stagger has to ride along with the
+    # radius column rather than replace the mapping (that would drop `offset`)
+    object$data$r <- r
+    object
 }
 
 #' Label angle and justification from the coordinate

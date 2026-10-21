@@ -266,3 +266,40 @@ test_that("standard ggplot2 layers stack without inherit.aes = FALSE (D3)", {
     q <- readRDS(f) + ggplot2::geom_text(data = nd, aes(x = r + 0.2, y = theta, label = id), size = 2)
     expect_s3_class(ggplot2::ggplotGrob(q), "gtable")
 })
+
+test_that("repel = TRUE staggers only the crowded stretches (B40)", {
+    # A label may only move outward along its own radius: the angle carries
+    # the node. So the stagger is a function of arc length, not of a rectangle
+    # in the plane -- ggrepel resolves collisions there and lines the labels
+    # up flat, which loses the circular reading.
+    mk <- function(n) {
+        ids <- sprintf("NC_%06d.1", seq_len(n))
+        m <- matrix(seq_len(n * n) %% 7, n)
+        m <- (m + t(m)) / 2
+        diag(m) <- 0
+        rownames(m) <- colnames(m) <- ids
+        ggcircos(m) + geom_node_text(size = 1.8, repel = TRUE)
+    }
+    radii <- function(p) {
+        d <- p$layers[[1]]$data
+        d$r
+    }
+
+    # a sparse ring has room, so nothing moves
+    expect_equal(length(unique(round(radii(mk(40)), 4))), 1L)
+
+    # a crowded one steps outward, and never inward
+    r120 <- radii(mk(120))
+    expect_gt(length(unique(round(r120, 4))), 1L)
+    expect_true(all(r120 >= 1 - 1e-12))
+
+    # the stagger preserves angle: every label keeps its own node's theta
+    p <- mk(120)
+    d <- p$layers[[1]]$data
+    nd <- layout_nodes(circos_layout(
+        {ids <- sprintf("NC_%06d.1", 1:120)
+         m <- matrix(seq_len(120 * 120) %% 7, 120); m <- (m + t(m)) / 2
+         diag(m) <- 0; rownames(m) <- colnames(m) <- ids; m}
+    ))
+    expect_equal(d$theta, nd$theta[match(d$id, nd$id)])
+})

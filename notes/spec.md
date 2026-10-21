@@ -558,6 +558,11 @@ geom_node_point(mapping = NULL, data = NULL, offset = 0.02, ...)
 - `rotate = TRUE`：旋转角由 §5.4 的 `screen_angle()` 给出（**不是**从变换后坐标反推），
   左半圈自动 `+180°` 并翻转 `hjust`；`rotate = FALSE` 时全部水平，左半圈 `hjust = 1`、右半圈 `hjust = 0`。
 - `geom_node_text` 不接收 `angle` 美学（和 `rotate` 冲突，直接 `cli_abort()` 说明）。
+- **`repel = TRUE` 沿径向外推避让（B40）**：按角序遍历，若相邻两标签在该半径上的
+  **弧距** `< 1.15 * step`（`step` 默认 0.055），后者外移 `step`。用弧距而非常数角度，
+  因为"挤不挤"取决于屏幕上的一行字有多高，而扇形越往外越宽。
+  **角度不变**——角度承载节点身份，标签只能沿自己那条辐条移动。
+  **不用 `ggrepel`**：它在矩形空间里解冲突，实测会把标签排成水平直线，丢掉环形语义。
 - **⚠ 决策（B6）**：`geom_node_arc(linewidth = )` 必须真正生效——`GeomNodeArc$required_aes`
   加上 `linewidth`，或改为在 `default_aes` 里用 `params$linewidth` 注入；当前参数被静默忽略。
 

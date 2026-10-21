@@ -58,6 +58,14 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   range from the track layer filling that band, so the axis cannot label a
   span the values were not scaled against. Pass `limits` to override it.
 
+## Labels
+
+* `geom_node_text(repel = TRUE)` staggers labels that would collide: walking
+  the ring in angle order, one that lands within a line height of its
+  neighbour moves outward along its own radius. The angle never changes, so
+  every label stays on its node's spoke. `ggrepel` is not used here -- it
+  resolves collisions in a rectangular space and lines the labels up flat.
+
 ## Layering
 
 * `ggcircos()` returns a plot that carries the link table but no mapping.

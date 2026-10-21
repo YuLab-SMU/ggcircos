@@ -31,6 +31,7 @@ geom_node_text(
   ...,
   rotate = FALSE,
   offset = 0.1,
+  repel = FALSE,
   nudge_x = 0,
   na.rm = FALSE,
   show.legend = NA,
@@ -63,6 +64,13 @@ units.}
 \item{rotate}{Rotate the label to follow the circle. The rotation is
 derived from where the coordinate actually puts the label, so it stays
 correct for any \code{start} or \code{clockwise}.}
+
+\item{repel}{Push overlapping labels outward along their own radius. Labels
+that would collide are staggered by a small radial step instead of
+drifting sideways, which is what a circular layout needs: the angle
+carries the node, so a label may only move along its own spoke.
+\code{ggrepel} does not help here -- it resolves collisions in a rectangular
+space and lines the labels up flat.}
 
 \item{nudge_x}{Radial nudge applied to the label.}
 }

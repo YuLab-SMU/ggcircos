@@ -96,6 +96,7 @@ ggplot_add.ggcircos_node <- function(object, plot, object_name, ...) {
             if (!identical(params$nudge_x %||% 0, 0)) {
                 object$geom_params$nudge_x <- params$nudge_x
             }
+            if (isTRUE(params$repel)) object <- repel_node_labels(object)
         }
     }
     re_add(drop_geometry_params(object), plot, object_name)
