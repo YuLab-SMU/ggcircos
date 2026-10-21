@@ -640,12 +640,22 @@ geom_track(
 **`position_track()` 签名**（导出，可单独用）
 
 ```r
-position_track(band, node_table, stack = FALSE,
-               scales = c("free", "fixed"), limits = NULL, width = 0.9)
+position_track(band, node = NULL, geom_name = NULL, anchored = FALSE,
+               band_fill = FALSE, stack = FALSE,
+               scales = c("free", "fixed"), limits = NULL, baseline = NULL,
+               width = 0.9, offset = 0)
 ```
 
-`node_table` 是带了 `id`/`theta`/`theta1 - theta0` 三列的数据框，通常来自
-`layout_nodes(circos_layout_of(plot))`。
+**⚠ 决策（R9）：没有 `node_table` 逃生口，position 只持向量。**
+§6.4 早先写的 `position_track(band, node_table, ...)` 与 §8.2 直接矛盾：
+§8.2 要求 position 只持有派生快照（`node_ids`、`node_theta` 这类普通向量），
+不持有 `data.frame` 或 layout 对象，这样同一个 `PositionTrack` 才能被多层共用
+而互不污染。§8.2 的理由更硬（它是一条可测的隔离契约），所以这里跟随它：
+
+- `node =` 只是一个**列名字符串**，不是节点表；
+- 节点 id 与角度快照由 `ggplot_add.ggcircos_track()` 在图层数据上算好再传；
+- 想脱离 `geom_track()` 手搓一层，就自己调 `position_track()` 并把
+  `y` 写成节点角度——轨迹的 `y` 本来就是角度（§4.2），不需要节点表。
 
 **归一化契约**（`position_track`）
 

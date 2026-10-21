@@ -580,3 +580,30 @@ test_that("geom_track(value = ) reaches the position and guards stacking (R4)", 
         class = "ggcircos_error_data"
     )
 })
+
+test_that("one position object can be shared by two layers unharmed (R9)", {
+    # The point of keeping only vectors on the position (spec 8.2): a shared
+    # PositionTrack must not accumulate one layer's data. It holds the band,
+    # the node column name and the normalisation settings -- nothing that a
+    # layer can write into.
+    m <- cor(mtcars)
+    pos <- position_track(band = c(1.06, 1.26), node = "id", anchored = TRUE)
+    before <- pos$band
+    vals <- data.frame(id = colnames(m), v = seq(0.1, 1, length.out = 11))
+
+    built <- ggplot2::ggplot_build(
+        ggcircos(m) +
+            geom_track(data = vals, aes(x = v), node = id, position = pos) +
+            geom_track(data = vals, aes(x = v), node = id, position = pos,
+                       fill = "tomato")
+    )
+    # both layers still draw in the band they were given, at the same radii:
+    # a layer must not leave its data behind on the shared object
+    expect_equal(built$data[[1]]$xmin[1], 1.06, tolerance = 1e-6)
+    expect_equal(built$data[[2]]$xmin[1], 1.06, tolerance = 1e-6)
+    expect_equal(built$data[[1]]$xmax, built$data[[2]]$xmax)
+    # and the shared object itself is untouched
+    expect_equal(pos$band, before)
+    expect_null(pos$values)
+    expect_null(pos$node_values)
+})

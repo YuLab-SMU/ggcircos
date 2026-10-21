@@ -132,6 +132,21 @@ sector_defaults <- function(offset) {
     )
 }
 
+#' Copy a position so a layer cannot rewrite the caller's object
+#'
+#' ggproto objects are environments, so `pos$field <- value` mutates the
+#' object the caller passed in and the next layer inherits one layer's data
+#' snapshot (spec §8.2). `rlang::env_clone()` copies an environment without
+#' disturbing its class or its `super` binding, which is what ggproto method
+#' dispatch walks.
+#' @keywords internal
+#' @noRd
+copy_position <- function(pos) {
+    out <- rlang::env_clone(pos)
+    class(out) <- class(pos)
+    out
+}
+
 #' Add default aesthetics without overwriting what the user mapped
 #' @keywords internal
 #' @noRd
@@ -294,7 +309,12 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
         node = params$node,
         layout = lay,
         width = params$width %||% 0.9,
-        geom = params$geom_name
+        geom = params$geom_name,
+        # a user mapping `aes(x = )` supplies the values: without saying so,
+        # the placeholder column would shadow the mapping and every value
+        # would scale to the same radius (the R4 failure, reached this time
+        # through an external position)
+        has_value = "x" %in% names(object$mapping)
     )
     spec <- track_geom_spec(params$geom_name)
     object$mapping <- merge_mapping(
@@ -304,28 +324,33 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
         !is.null(params$node) && !"node" %in% names(object$mapping)) {
         object$mapping$node <- rlang::sym(params$node)
     }
+    # A position handed in by the caller is theirs: copy it before storing
+    # anything, or a layer silently rewrites an object the next layer -- or
+    # the caller -- still holds (spec §8.2, §6.4). ggproto objects are
+    # environments, so `$<-` on the original would mutate it in place.
+    pos <- object$position
+    if (inherits(pos, "PositionTrack")) {
+        pos <- copy_position(pos)
+    }
     # `geom_track(value = )` hands the numbers to the position directly. The
     # alternative -- mapping `x` -- cannot work: ggplot2 resolves aesthetics
     # before the position runs and GeomRect's setup_data derives `x` from
     # xmin/xmax, so the position only ever saw 0 (review R4). The vector is a
     # plain snapshot, in layer-data order.
     if (!is.null(params$value_name)) {
-        object$position$values <- as.numeric(object$data[[params$value_name]])
+        pos$values <- as.numeric(object$data[[params$value_name]])
     }
     # The node ids travel the same way: ggplot2 keeps only aesthetics in the
     # frame it hands the position, so `data[[node]]` is gone by then and
     # per-node scaling fell back to a single group (review R3).
     if (!is.null(params$node) && params$node %in% names(object$data)) {
-        object$position$node_values <- as.character(object$data[[params$node]])
-        object$position$node_angles <- object$data$y
+        pos$node_values <- as.character(object$data[[params$node]])
+        pos$node_angles <- object$data$y
     }
-    # the position keeps only the resolved numeric band (a plain vector); the
-    # layout itself never travels into it (spec §8.2). A position that came
-    # in with a numeric band already carries it, so it is not touched — a
-    # shared position object must not be rewritten by one layer (spec §6.4).
-    if (is.null(object$position$band)) {
-        object$position$band <- band
-    }
+    # the resolved numeric band lives on the copy too; a position that already
+    # carried one keeps its own (spec §6.4)
+    if (is.null(pos$band)) pos$band <- band
+    object$position <- pos
     re_add(drop_geometry_params(object), plot, object_name)
 }
 

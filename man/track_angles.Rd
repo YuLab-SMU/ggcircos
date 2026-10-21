@@ -4,7 +4,15 @@
 \alias{track_angles}
 \title{Add the angle columns a track layer needs}
 \usage{
-track_angles(data, node, layout, width = 0.9, geom = "col", ...)
+track_angles(
+  data,
+  node,
+  layout,
+  width = 0.9,
+  geom = "col",
+  has_value = FALSE,
+  ...
+)
 }
 \arguments{
 \item{data}{Layer data.}
@@ -16,6 +24,11 @@ track_angles(data, node, layout, width = 0.9, geom = "col", ...)
 \item{width}{Fraction of the node arc used by the layer.}
 
 \item{geom}{Track geometry name.}
+
+\item{has_value}{Whether the caller already supplies the values, either as
+a data column named \code{x} or through a mapping. When \code{TRUE} no placeholder
+column is written, because a column called \code{x} would shadow the layer's
+own mapping and every value would scale to the same radius.}
 
 \item{...}{Ignored; kept so older calls that passed \code{band_width} still work.}
 }

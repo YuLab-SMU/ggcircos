@@ -75,12 +75,16 @@ geom_track <- function(mapping = NULL,
                        na.rm = FALSE,
                        show.legend = NA,
                        inherit.aes = FALSE) {
-    if (missing(band)) {
+    # A position built by `position_track()` already carries its band, so
+    # repeating it on the layer is redundant. Only a layer with neither has
+    # nothing to draw into.
+    if (missing(band) && (is.null(position) || is.null(position$band))) {
         ggcircos_abort(
             "band",
             "{.fn geom_track} needs a {.arg band}: a declared track name or an explicit {.code c(r0, r1)}."
         )
     }
+    if (missing(band)) band <- NULL
     spec <- track_geom_spec(geom)
     scales <- match.arg(scales)
     if (is.null(data) || is_waive(data)) {
@@ -222,6 +226,10 @@ track_geom_spec <- function(geom) {
 #' @param layout A `circos_layout` (or its node table).
 #' @param width Fraction of the node arc used by the layer.
 #' @param geom Track geometry name.
+#' @param has_value Whether the caller already supplies the values, either as
+#'   a data column named `x` or through a mapping. When `TRUE` no placeholder
+#'   column is written, because a column called `x` would shadow the layer's
+#'   own mapping and every value would scale to the same radius.
 #' @param ... Ignored; kept so older calls that passed `band_width` still work.
 #' @return `data` with the angle columns added.
 #' @examples
@@ -230,7 +238,7 @@ track_geom_spec <- function(geom) {
 #'     data.frame(id = colnames(mtcars)), "id", lay, 0.9, "col"
 #' ))
 #' @export
-track_angles <- function(data, node, layout, width = 0.9, geom = "col", ...) {
+track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_value = FALSE, ...) {
     node_col <- column_or_string(rlang::enquo(node), "node")
     nt <- if (inherits(layout, "circos_layout")) layout$nodes else layout
     if (is.null(nt)) {
@@ -260,7 +268,7 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", ...) {
     # value into 0 -- the bug that hid the negative-input check (review R4).
     # `geom_track(value = )` marks the layer with `.circos_has_value`, which
     # survives to here because `data` is the layer's own frame.
-    if (!"x" %in% names(data) && !isTRUE(data$.circos_has_value)) {
+    if (!"x" %in% names(data) && !isTRUE(data$.circos_has_value) && !isTRUE(has_value)) {
         data$x <- 0  # placeholder; the position owns it
     }
     data$y <- theta
