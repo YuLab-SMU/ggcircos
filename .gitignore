@@ -4,3 +4,6 @@
 .Rproj.user
 R/geom-rect-axis.R
 Rplots.pdf
+# testthat per-run debug output
+tests/testthat/_problems/
+tests/testthat/testthat-problems.rds
