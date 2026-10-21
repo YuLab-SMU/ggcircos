@@ -218,3 +218,51 @@ test_that("an angle aesthetic on node labels is refused, not ignored (R8)", {
         "gtable"
     )
 })
+
+test_that("standard ggplot2 layers stack without inherit.aes = FALSE (D3)", {
+    # The plot carries data only, no mapping: x/y/xend/yend belong to the
+    # chord layer, which maps them itself. Hanging them at plot level made
+    # every standard layer inherit columns it does not use -- ggplot2::geom_rect()
+    # wants xmin/ymin and failed on the inherited x/y. This is the property
+    # the README's interop example depends on, so pin it: a standard layer
+    # needs nothing but its own aes() and data.
+    m <- cor(mtcars)[1:6, 1:6]
+    base <- ggcircos(m, order = "hclust")
+    nd <- layout_nodes(circos_layout(m, order = "hclust"))
+
+    # the plot itself maps nothing (an empty mapping, not NULL)
+    expect_length(base$mapping, 0L)
+
+    # every ggplot2 call is namespace-qualified, as elsewhere in this file
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_point(data = nd, aes(x = r, y = theta), size = 2)), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_text(data = nd, aes(x = r + 0.1, y = theta, label = label),
+                         size = 2)), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_label(data = nd, aes(x = r + 0.15, y = theta, label = id),
+                          size = 2)), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_tile(data = nd, aes(x = r, y = theta, fill = sector),
+                         height = 0.02)), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_rect(data = nd, aes(xmin = r, xmax = r + 0.05,
+                                        ymin = theta0, ymax = theta1),
+                         alpha = 0.3)), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_segment(data = nd, aes(x = r, xend = r + 0.1,
+                                           y = theta, yend = theta))), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_path(data = nd, aes(x = r + 0.08, y = theta))), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::geom_violin(data = nd, aes(x = r + 0.2, y = theta))), "gtable")
+    expect_s3_class(ggplot2::ggplotGrob(
+        base + ggplot2::annotate("point", x = 1.3, y = 0, size = 4)), "gtable")
+
+    # and a round trip through saveRDS keeps the property
+    f <- tempfile(fileext = ".rds")
+    p <- base + ggplot2::geom_point(data = nd, aes(x = r + 0.1, y = theta), size = 2)
+    saveRDS(p, f)
+    q <- readRDS(f) + ggplot2::geom_text(data = nd, aes(x = r + 0.2, y = theta, label = id), size = 2)
+    expect_s3_class(ggplot2::ggplotGrob(q), "gtable")
+})

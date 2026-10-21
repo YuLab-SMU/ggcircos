@@ -37,6 +37,21 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
 * `geom_node_arc()` sits at `r = 1` (`offset = 0`), sharing an edge with the
   ribbon feet. Pass `offset =` for a visible gap.
 
+## Layering
+
+* `ggcircos()` returns a plot that carries the link table but no mapping.
+  `x`/`y`/`xend`/`yend` are mapped by `geom_chord()` itself, so a standard
+  ggplot2 layer needs only its own `aes()` and `data`:
+
+  ```r
+  ggcircos(m) + geom_rect(data = nd, aes(xmin = r, xmax = r + 0.04,
+                                         ymin = theta0, ymax = theta1))
+  ```
+
+  Previously the chord columns sat on the plot, and every layer inherited them,
+  which meant `geom_rect()` failed on the inherited `x`/`y` and each layer had
+  to opt out with `inherit.aes = FALSE`.
+
 ## Behaviour notes
 
 * Each sector carries a wider gap at both of its ends, so sectors read as

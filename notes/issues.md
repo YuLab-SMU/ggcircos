@@ -616,6 +616,37 @@ circlize 是每条 link 单独 `polygon()`，重叠处按 alpha 叠加，所以�
 
 回归测试：`"overlapping ribbons blend instead of punching a white hole (B35)"`。
 
+### B36. plot 级挂了弦图专用的 mapping，标准 ggplot2 图层叠不上去 —— **已修（2026-10-21）**
+
+`ggcircos()` 过去返回 `ggplot(links, aes(x, y, xend, yend))`。弦图层需要这四列，
+但挂在 plot 级，等于要求**所有**图层都继承它们。用户叠一个标准层就撞墙：
+
+```r
+ggcircos(m) + geom_point(data = nd, aes(x = r, y = theta))
+#> Error in `.data$xend`: Column `xend` not found in `.data`.
+```
+
+只能给每一层补一句 `inherit.aes = FALSE`。这是把内部实现细节漏到了用户界面。
+
+试过两种收敛：
+
+| plot 级 mapping | 结果 |
+|---|---|
+| `x, y, xend, yend`（旧） | `geom_rect`/`geom_point` 等全要 `inherit.aes = FALSE` |
+| 只留 `x, y` | `geom_rect` 仍失败（它要 `xmin`/`ymin`，继承了 `x`/`y` 反而找不到列） |
+| **全空** | 11 个标准几何层加 `annotate()`，全部直接可叠 |
+
+保留 `x`/`y` 换来的便利是"裸写 `geom_text(aes(label=))` 自动落在节点上"，
+但代价是 `geom_rect`/`geom_tile` 这类不映射 `x`/`y` 的层照样要 `inherit.aes`。
+全空更彻底，也更符合 ggplot2 的惯例（`ggplot2` 自己的 `ggplot()` 默认不带 mapping）。
+
+`geom_chord()` 不受影响：它在 `ggplot_add()` 里用 `chord_coordinates()` 自己映射
+四个坐标加槽位列（§6.1），本来就不依赖 plot 级。
+
+回归测试：`test-demos.R` 的 `"standard ggplot2 layers stack without
+inherit.aes = FALSE (D3)"`（断言 `length(plot$mapping) == 0`，并逐个叠
+point/text/label/tile/rect/segment/path/violin/annotate 与 rds 往返）。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

@@ -178,7 +178,7 @@ structure(
 | `theta` `theta_end` | dbl | 两端槽位中点 θ（`geom_chord(type="line")` 用） |
 | `theta0` `theta1` | dbl | `from` 端槽位起止 |
 | `theta_end0` `theta_end1` | dbl | `to` 端槽位起止 |
-| `x` `y` `xend` `yend` | dbl | `r`/`theta`、`r`/`theta_end`（**= 默认 mapping**） |
+| `x` `y` `xend` `yend` | dbl | `r`/`theta`、`r`/`theta_end`（**由 `geom_chord()` 自己映射，不放 plot 级**，见 §7-2） |
 | `edge_id` | int | 行号，用于 `group` |
 
 用户数据里的其它列（`r` 相关、`identity`、`value`…）全部保留。
@@ -734,7 +734,13 @@ ggcircos(
 **必须做的 5 件事**（不多不少）：
 
 1. `layout <- circos_layout(...)`；把 `data` 换成 `layout$links`。
-2. `ggplot(layout$links, mapping = aes(x = x, y = y, xend = xend, yend = yend))`。
+2. `ggplot(layout$links)`，**不带 mapping**。
+   **⚠ 决策（B36）**：`x`/`y`/`xend`/`yend` 是弦图层自己的事，`geom_chord()` 在
+   `ggplot_add()` 里把它们映射上（§6.1）。挂在 plot 级会让每个标准 ggplot2 图层
+   都继承用不到的列：`geom_rect()` 要的是 `xmin`/`ymin`，继承了 `x`/`y` 反而报
+   `Column \`xend\` not found`。清空之后，标准层只需要自己的 `aes()` 和 `data`，
+   不必写 `inherit.aes = FALSE`（回归测试 `test-demos.R` 的 D3）。
+   曾试过保留 `x`/`y`：`geom_rect()` 依然失败，故全空。
 3. `+ coord_circos()`（或 `coord_arc()`）+ `theme_circos()`。
 4. `+ scale_y_continuous(limits = c(0, 2*pi), expand = c(0, 0))` +
    `scale_x_continuous(limits = c(0, xmax), expand = c(0, 0))`，

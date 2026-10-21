@@ -99,10 +99,12 @@ ggcircos <- function(data,
     # has to reach into negative values too
     xlim <- if (layout == "arc") c(-1.1, xmax) else c(0, xmax)
 
-    p <- ggplot(
-        data = structure(lay$links, circos_layout = lay),
-        mapping = aes(x = .data$x, y = .data$y, xend = .data$xend, yend = .data$yend)
-    ) +
+    # No plot-level mapping: x/y/xend/yend belong to the chord layer alone
+    # (geom_chord maps them itself), and hanging them here made every standard
+    # ggplot2 layer inherit columns it does not use -- geom_rect() wants
+    # xmin/ymin, and inheriting x/y failed on it. With the plot carrying only
+    # data, a standard layer needs nothing but its own aes() and data.
+    p <- ggplot(data = structure(lay$links, circos_layout = lay)) +
         # squish rather than drop: a node straddling theta = 0 makes some
         # track layers reach just outside [0, 2*pi], and losing those rows
         # would silently delete a node's track
