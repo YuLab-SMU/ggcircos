@@ -395,8 +395,10 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
 #' `x1 - value1` by hand.
 #' @keywords internal
 #' @noRd
-track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NULL) {
+track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NULL,
+                              node = NULL) {
     data <- as.data.frame(data, stringsAsFactors = FALSE)
+    node_col <- node
     if (!slot %in% names(data)) {
         ggcircos_abort(
             "data",
@@ -436,11 +438,21 @@ track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NUL
             )
         )
     }
-    theta0 <- links$theta0[hit]
-    theta1 <- links$theta1[hit]
+    # Which end of the link the row sits on. A link reserves a slot on *each*
+    # of its two nodes, and they are different arcs; taking the from end for
+    # every row drew the target-side rectangles on the wrong side of the ring
+    # (the reproduction figure made this obvious). The row's own node id says
+    # which end it is: match it against the two endpoints. A self-loop has the
+    # same node on both ends, so the from slot is used, which is its foot.
+    row_node <- if (!is.null(node_col) && node_col %in% names(data))
+        as.character(data[[node_col]]) else NA_character_
+    on_to <- !is.na(row_node) & row_node == as.character(links$to[hit]) &
+        as.character(links$from[hit]) != as.character(links$to[hit])
+    theta0 <- ifelse(on_to, links$theta_end0[hit], links$theta0[hit])
+    theta1 <- ifelse(on_to, links$theta_end1[hit], links$theta1[hit])
     arc <- (theta1 - theta0) %% (2 * pi)
     theta <- wrap_2pi(theta0 + arc / 2)
-    r_link <- links$x[hit]
+    r_link <- ifelse(on_to, links$xend[hit], links$x[hit])
 
     out <- data
     # the row's arc IS the link's slot: theta is the centre, ymin/ymax the two

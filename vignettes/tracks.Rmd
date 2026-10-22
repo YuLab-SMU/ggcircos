@@ -277,6 +277,10 @@ Faceting works because the layout is shared. A facet splits the *links*,
 not the ring: the chord layer is cut into one set of links per panel, while
 the node ring is the same ring in every panel.
 
+That is the right shape when every panel has the same nodes. When they do
+not -- each sample its own node set -- use `by =` instead, and each panel gets
+its own ring. See `vignette("from-circlize")` for that case.
+
 The data for this section is four samples over six shared nodes. Each
 sample has its own links, and `sample` is an ordinary column of the link
 table, which is what the facet variable has to be.

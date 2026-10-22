@@ -157,8 +157,6 @@ tag_layer <- function(layer, class, settings = list()) {
 #' @noRd
 layer_settings <- function(object) object$ggcircos %||% list()
 
-#' @keywords internal
-#' @noRd
 #' The multiple-layout list attached by `ggcircos(by = )`, or `NULL`
 #' @keywords internal
 #' @noRd

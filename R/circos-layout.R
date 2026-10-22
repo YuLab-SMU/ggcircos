@@ -684,8 +684,6 @@ circos_layout_build <- function(links,
     )
 }
 
-#' @keywords internal
-#' @noRd
 #' The arcs a node table asks for: one row per (id, r)
 #'
 #' A node may occupy several radii (spec sec.4.9): the node table lists it once

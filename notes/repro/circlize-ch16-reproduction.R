@@ -39,6 +39,8 @@ links <- data.frame(
   stringsAsFactors = FALSE
 )
 links <- links[links$bp > 0, ]
+# the layout files links by row number; `slot =` reads that same number
+links$edge_id <- seq_len(nrow(links))
 ids <- unique(c(links$from, links$to))
 r_i <- as.integer(sub("^R_", "", links$from))
 c_i <- as.integer(sub("^C_", "", links$to))
@@ -51,12 +53,16 @@ links$calpha <- ifelse(links$bp > q70, 0.63, 0.13)
 # per-link methylation on both ends
 links$m1 <- meth_mat_1[cbind(r_i, c_i)]
 links$m2 <- meth_mat_2[cbind(r_i, c_i)]
+# one row per (link end, value): `edge_id` is what `slot =` reads, so each
+# rectangle lands on its own link's slot instead of an even bin
 mk_tracks <- function(val) {
   keep <- !is.na(val) & links$from %in% ids
   keep_to <- !is.na(val) & links$to %in% ids
   rbind(
-    data.frame(id = links$from[keep], m = val[keep], stringsAsFactors = FALSE),
-    data.frame(id = links$to[keep_to], m = val[keep_to], stringsAsFactors = FALSE)
+    data.frame(id = links$from[keep], m = val[keep],
+               edge_id = links$edge_id[keep], stringsAsFactors = FALSE),
+    data.frame(id = links$to[keep_to], m = val[keep_to],
+               edge_id = links$edge_id[keep_to], stringsAsFactors = FALSE)
   )
 }
 trk_m1 <- mk_tracks(links$m1)
@@ -75,8 +81,8 @@ p <- ggcircos(links, nodes = nodes, gap = 0.00278, weight = "bp",
   geom_chord(aes(fill = ccol, alpha = calpha)) +
   geom_node_arc(aes(fill = col)) +
   geom_track(data = trk_kb, aes(x = kb), node = id, band = "kb", fill = "grey60") +
-  geom_track(data = trk_m1, aes(x = m), node = id, band = "m1", fill = "#E41A1C") +
-  geom_track(data = trk_m2, aes(x = m), node = id, band = "m2", fill = "#377EB8") +
+  geom_track(data = trk_m1, aes(x = m), node = id, band = "m1", slot = edge_id, fill = "#E41A1C") +
+  geom_track(data = trk_m2, aes(x = m), node = id, band = "m2", slot = edge_id, fill = "#377EB8") +
   geom_track_axis(band = "kb", limits = c(0, 2200)) +
   scale_fill_identity(guide = "none") +
   scale_alpha_identity(guide = "none")

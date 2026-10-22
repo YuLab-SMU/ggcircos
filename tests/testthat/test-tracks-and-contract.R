@@ -1038,3 +1038,38 @@ test_that("density needs a spread, and stacking is refused (B42)", {
         class = "ggcircos_error_data"
     )
 })
+
+test_that("a slot-aligned row sits on the slot of ITS node, not always the from end (B47)", {
+    # a link reserves a slot on each of its two nodes, and the two arcs are
+    # different. A row filed under the link's `to` node must land on the to
+    # slot -- taking the from slot for every row put target-side rectangles
+    # on the wrong side of the ring.
+    nodes <- data.frame(id = c("a", "b", "c"), stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a", "b"), to = c("b", "c"),
+                        stringsAsFactors = FALSE)
+    lay <- circos_layout(links, nodes = nodes, tracks = c(t = 0.2))
+    lk <- lay$links
+    trk <- data.frame(
+        id = c("a", "b", "c"),      # a: link 1's from; b: link 1's to; c: link 2's to
+        v = c(0.5, 0.5, 0.5),
+        edge_id = c(1L, 1L, 2L),
+        stringsAsFactors = FALSE
+    )
+    d <- ggplot2::ggplot_build(
+        ggcircos(lay) +
+            geom_track(data = trk, ggplot2::aes(x = v), node = id, band = "t",
+                       slot = edge_id)
+    )$data[[1]]
+    # rows come back in data order; `.circos_theta` is not an aesthetic, so the
+    # built frame keeps only x/y/ymin/ymax and the node column is gone
+    expect_equal(nrow(d), 3L)
+    slot_of <- function(i) sort(c(lk$theta0[i], lk$theta1[i]))
+    slot_end <- function(i) sort(c(lk$theta_end0[i], lk$theta_end1[i]))
+    expect_equal(sort(c(d$ymin[1], d$ymax[1])), slot_of(1), tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[2], d$ymax[2])), slot_end(1), tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[3], d$ymax[3])), slot_end(2), tolerance = 1e-9)
+    # and the three rows are three different arcs: a from-slot-for-everything
+    # bug would collapse rows 2 and 3 onto their link's from side
+    expect_false(isTRUE(all.equal(sort(c(d$ymin[2], d$ymax[2])),
+                                  sort(c(d$ymin[1], d$ymax[1])))))
+})

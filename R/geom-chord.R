@@ -495,7 +495,7 @@ self_loop_outline <- function(a0, a1, r_node = 1, node_width = 1,
 
 #' Vertex paths for the polar layout, in (radius, angle) space.
 #'
-#' The ribbon outline is **ported from circlize** (see [chord_bezier()]):
+#' The ribbon outline is **ported from circlize** (see `chord_bezier()`):
 #' a quadratic Bezier in the plane between the two feet, closed by the two
 #' arcs. Every hand-rolled polar approximation before this one produced a
 #' recognisably different band -- a pinched waist, a hole in the middle, or

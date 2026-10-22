@@ -251,9 +251,9 @@ consumers, and you are allowed to be one too.
 
 ## What this does not do yet
 
-- Self-loops (`from == to`) are dropped with a message in v0.1.
-- Labels are not collision-avoided; a dense ring will overlap. Use
-  `geom_node_text(rotate = TRUE)` to follow the circle, which buys space.
-- No angular (clock) axis. Distribution tracks (`violin`, `density`) are available.
+- No angular (clock) axis: `geom_track_axis()` is a radial ruler.
+- Self-loops (`from == to`) need `self_loops = TRUE`; by default they are
+  dropped with a message. With it, they are drawn as loops folded toward the
+  centre (see `vignette("from-circlize")`).
 - The y (angle) scale is fixed to `[0, 2*pi]` by the layout. Replacing it
   breaks angles, and the coordinate warns when you do.
