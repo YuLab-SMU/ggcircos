@@ -344,32 +344,46 @@ layout_slots <- function(lay, from, to) {
 #' @noRd
 #' @exportS3Method ggplot2::ggplot_add
 ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
-    if (!is.null(circos_layouts_of(plot))) {
-        ggcircos_abort(
-            "data",
-            c(
-                "{.fn geom_track} is not supported on a {.arg by = } plot yet.",
-                i = "The B-plan (one ring per group) draws chords and the node ring; \
-                    tracks need each panel's own band, which is a later step.",
-                i = "Drop {.arg by = } to use tracks on a single shared layout."
-            )
+    lays <- circos_layouts_of(plot)
+    params <- layer_settings(object)
+    if (!is.null(lays)) {
+        # B-plan: each panel is its own ring, so every row is placed by the
+        # node table of *its* group. The bands are one setting (`tracks =`), so
+        # they agree across groups -- assert it rather than pick one silently.
+        key <- attr(plot$data, "circos_by_key", exact = TRUE)
+        tr <- layout_tracks(lays[[1]])
+        if (length(lays) > 1L) {
+            same <- vapply(lays[-1], function(l) {
+                t2 <- layout_tracks(l)
+                isTRUE(all.equal(t2$r0, tr$r0)) && isTRUE(all.equal(t2$r1, tr$r1))
+            }, logical(1))
+            if (!all(same)) {
+                ggcircos_abort("internal", "groups disagree on their track bands; this is a bug.")
+            }
+        }
+        band <- track_band(params$band_name, params$band, layout_node_table(lays[[1]]))
+        object$data <- track_angles(
+            data = object$data, node = params$node, layout = NULL,
+            width = params$width %||% 0.9, geom = params$geom_name,
+            has_value = "x" %in% names(object$mapping),
+            layouts = lays, group = key
+        )
+    } else {
+        lay <- require_layout(plot, object_name)
+        band <- track_band(params$band_name, params$band, layout_node_table(lay))
+        object$data <- track_angles(
+            data = object$data,
+            node = params$node,
+            layout = lay,
+            width = params$width %||% 0.9,
+            geom = params$geom_name,
+            # a user mapping `aes(x = )` supplies the values: without saying so,
+            # the placeholder column would shadow the mapping and every value
+            # would scale to the same radius (the R4 failure, reached this time
+            # through an external position)
+            has_value = "x" %in% names(object$mapping)
         )
     }
-    lay <- require_layout(plot, object_name)
-    params <- layer_settings(object)
-    band <- track_band(params$band_name, params$band, layout_node_table(lay))
-    object$data <- track_angles(
-        data = object$data,
-        node = params$node,
-        layout = lay,
-        width = params$width %||% 0.9,
-        geom = params$geom_name,
-        # a user mapping `aes(x = )` supplies the values: without saying so,
-        # the placeholder column would shadow the mapping and every value
-        # would scale to the same radius (the R4 failure, reached this time
-        # through an external position)
-        has_value = "x" %in% names(object$mapping)
-    )
     spec <- track_geom_spec(params$geom_name)
     object$mapping <- merge_mapping(
         object$mapping, track_defaults(spec$rect, aggregate = spec$aggregate)
@@ -446,8 +460,35 @@ axis_limits_from_layers <- function(plot, band, band_name = NULL) {
 #' @noRd
 #' @exportS3Method ggplot2::ggplot_add
 ggplot_add.ggcircos_axis <- function(object, plot, object_name, ...) {
-    lay <- require_layout(plot, object_name)
+    lays <- circos_layouts_of(plot)
     params <- layer_settings(object)
+    if (!is.null(lays)) {
+        # B-plan: the axis stands in the gap before the first node of *each*
+        # panel, so it needs the panels' node tables -- the stacked one.
+        node_tab <- circos_stacked(plot, "nodes")
+        tr <- layout_tracks(lays[[1]])
+        band <- track_band(params$band_name, params$band, layout_node_table(lays[[1]]))
+        limits <- params$limits
+        if (length(limits) != 2L) {
+            limits <- axis_limits_from_layers(plot, band, params$band_name)
+            if (is.null(limits)) {
+                ggcircos_abort(
+                    "data",
+                    c(
+                        "{.fn geom_track_axis} cannot tell which range to label.",
+                        i = "Add the track for this band first, or pass {.arg limits} explicitly."
+                    )
+                )
+            }
+        }
+        params$limits <- limits
+        if (length(params$breaks) == 0L) params$breaks <- pretty_within(limits, 3)
+        if (length(params$breaks) && !all(params$breaks >= limits[1] & params$breaks <= limits[2])) {
+            params$breaks <- pretty_within(limits, 3)
+        }
+        return(axis_after_band(object, plot, object_name, params, band, node_tab))
+    }
+    lay <- require_layout(plot, object_name)
     band <- track_band(params$band_name, params$band, layout_node_table(lay))
     limits <- params$limits
     # an omitted argument reaches the tag as an empty vector, not NULL
@@ -478,12 +519,19 @@ ggplot_add.ggcircos_axis <- function(object, plot, object_name, ...) {
     if (length(params$breaks) && !all(params$breaks >= limits[1] & params$breaks <= limits[2])) {
         params$breaks <- pretty_within(limits, 3)
     }
+    axis_after_band(object, plot, object_name, params, band, lay$nodes)
+}
+
+#' Build the axis layer once its band and node table are known
+#' @keywords internal
+#' @noRd
+axis_after_band <- function(object, plot, object_name, params, band, node_table) {
     object$data <- track_axis_data(
         band = band,
         limits = params$limits,
         breaks = params$breaks,
         labels = params$labels,
-        node_table = lay$nodes,
+        node_table = node_table,
         tick_length = params$tick.length %||% 0.02
     )
     object$inherit.aes <- FALSE

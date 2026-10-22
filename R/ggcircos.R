@@ -162,7 +162,8 @@ ggcircos_by <- function(data, nodes, by, layout, start, tracks, track_offset,
                         radius, weight, columns, ...) {
     lays <- circos_layout(
         data, nodes = nodes, by = by, radius = radius,
-        weight = weight, columns = columns, ...
+        weight = weight, columns = columns,
+        tracks = tracks, track_offset = track_offset, ...
     )
     if (!inherits(lays, "circos_layouts")) {
         ggcircos_abort("internal", "circos_layout(by = ) did not return a circos_layouts list.")

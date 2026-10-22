@@ -984,11 +984,13 @@ ggcircos(
 - **链接归位**：一条链接属于哪个 panel，优先看它**自己携带的组列**（与 `by` 同名的列）；
   链接表没有这一列时，才用两端节点所在的组——此时两端分属不同组就**丢弃并
   `cli::cli_inform()` 一次**（独立环里无处安放）。**推荐**链接表直接给组列，语义最明确。
-- **首版只支持弦与节点环**：`geom_chord()`、`geom_node_arc/text/point()`、
-  `geom_sector_label()` 在 `by =` 下都能用（每 panel 各自的环）。
-  **`geom_track()` / `geom_track_axis()` 暂不支持**——轨道需要每 panel 自己的
-  band 与径向映射，`track_angles()` 现在按单个 layout 查角度表，按组查是下一步。
-  用到时报 `ggcircos_error_data` 并说明。`self_loops` 在 `by =` 下沿用各组自己的设置。
+- **轨道也按 panel 放置**：`geom_track()` / `geom_track_axis()` 在 `by =` 下可用。
+  每行按**自己那一组**的节点表定位（`track_angles()` 拿到的是各组的 layout 列表），
+  所以两个 panel 可以把同一个 id 放在不同的角度上。轨道数据**必须带分组列**
+  （与 `by =` 同名），否则报 `ggcircos_error_data`——一行属于哪个环是它自己的属性。
+  **轨道带是共享的**：`tracks =` 是全局设置，各组 band 半径相同（代码里断言这一点，
+  不一致就报 internal error），所以 `PositionTrack` 只需一个 band。
+  `geom_track_axis()` 的刻度落在**各 panel 自己的首节点之前**。
 - **定位文档 D1 的"多环"图**：在乙方案实现前，D1 只能用甲方案的"共享节点环"版本；
   乙方案落地后 D1 升级为真正的"每样本独立环"，README 与定位文档可以据此更新宣传图。
 

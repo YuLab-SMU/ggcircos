@@ -288,6 +288,11 @@ track_geom_spec <- function(geom) {
 #'   (`"boxplot"`, `"violin"`). Such a mark keeps the node's whole arc rather
 #'   than one bin of it. `NULL` asks `track_geom_spec()`; pass it explicitly
 #'   when calling this function with a geometry of your own.
+#' @param layouts A `circos_layouts` list (the `by = ` result) instead of a
+#'   single layout: every row is then placed by the node table of its own
+#'   group, so two rings may put the same id at different angles.
+#' @param group Name of the column in `data` that says which group a row
+#'   belongs to. Required with `layouts`.
 #' @return `data` with the angle columns added.
 #' @examples
 #' lay <- circos_layout(cor(mtcars))
@@ -296,18 +301,67 @@ track_geom_spec <- function(geom) {
 #' ))
 #' @export
 track_angles <- function(data, node, layout, width = 0.9, geom = "col",
-                         has_value = FALSE, ..., aggregate = NULL) {
+                         has_value = FALSE, ..., aggregate = NULL,
+                         layouts = NULL, group = NULL) {
     node_col <- column_or_string(rlang::enquo(node), "node")
     if (is.null(aggregate)) aggregate <- track_aggregates(geom)
-    nt <- if (inherits(layout, "circos_layout")) layout$nodes else layout
-    if (is.null(nt)) {
-        ggcircos_abort("layout", "{.arg layout} must be a {.cls circos_layout} or a node table.")
-    }
     data <- as.data.frame(data, stringsAsFactors = FALSE)
     if (!node_col %in% names(data)) {
         ggcircos_abort("data", "The data has no node column {.field {node_col}}.")
     }
     ids <- as.character(data[[node_col]])
+
+    # per-row node key for the bin split: (group, id) under the B-plan, id
+    # alone otherwise. The split groups rows of the SAME node in the SAME ring,
+    # which is exactly what ymin/ymax must tile.
+    if (!is.null(layouts)) {
+        gkey <- if (is.null(group)) NULL else as.character(data[[group]])
+        if (is.null(gkey) || !group %in% names(data)) {
+            ggcircos_abort(
+                "data",
+                c(
+                    "The track data has no {.field {group}} column, so its rows cannot be \
+                     placed on a multi-ring plot.",
+                    i = "Add the same column the {.arg by = } layout uses, so each row \
+                         knows which ring it belongs to."
+                )
+            )
+        }
+        theta <- rep(NA_real_, nrow(data))
+        arc <- rep(NA_real_, nrow(data))
+        for (k in names(layouts)) {
+            rows <- which(gkey == k)
+            if (!length(rows)) next
+            nt_k <- layouts[[k]]$nodes
+            idx <- match(ids[rows], nt_k$id)
+            if (anyNA(idx)) {
+                bad <- unique(ids[rows][is.na(idx)])
+                ggcircos_abort(
+                    "node",
+                    "Track data in group {.val {k}} refers to unknown node{?s} {.val {head(bad, 5)}}.",
+                    i = "Known nodes there: {.val {head(nt_k$id, 10)}}."
+                )
+            }
+            a <- (nt_k$theta1[idx] - nt_k$theta0[idx]) %% (2 * pi)
+            a[is.na(a)] <- nt_k$width[idx][is.na(a)]
+            theta[rows] <- nt_k$theta[idx]
+            arc[rows] <- a
+        }
+        if (anyNA(theta)) {
+            ggcircos_abort(
+                "data",
+                "Some track rows name a group no ring was built for; every row needs a \
+                 group the layout knows."
+            )
+        }
+        key <- paste(gkey, ids, sep = "\r")
+        return(track_finish_angles(data, key, theta, arc, width, aggregate, has_value))
+    }
+
+    nt <- if (inherits(layout, "circos_layout")) layout$nodes else layout
+    if (is.null(nt)) {
+        ggcircos_abort("layout", "{.arg layout} must be a {.cls circos_layout} or a node table.")
+    }
     idx <- match(ids, nt$id)
     if (anyNA(idx)) {
         bad <- unique(ids[is.na(idx)])
@@ -320,51 +374,43 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
     arc <- (nt$theta1[idx] - nt$theta0[idx]) %% (2 * pi)
     arc[is.na(arc)] <- nt$width[idx][is.na(arc)]
     theta <- nt$theta[idx]
-    data$.circos_theta <- theta
-    data$.circos_arc <- arc
-    # A placeholder only when the caller did not supply the value column.
-    # A data column named `x` overrides the layer's mapping and turns every
-    # value into 0 -- the bug that hid the negative-input check (review R4).
-    # `geom_track(value = )` marks the layer with `.circos_has_value`, which
-    # survives to here because `data` is the layer's own frame.
+    track_finish_angles(data, key = idx, theta = theta, arc = arc,
+                        width = width, aggregate = aggregate, has_value = has_value)
+}
+
+#' Add y / ymin / ymax once theta and arc are known per row
+#'
+#' Shared by the single-layout and the B-plan paths: both end up with a `theta`
+#' and an `arc` per row and a `key` saying which node-row-group a row belongs
+#' to (the id in one ring, `(group, id)` across rings). `ymin`/`ymax` come from
+#' `theta -/+ arc/2`, which equals `theta0` for a single node and stays correct
+#' when the two rings place the same id on different arcs.
+#' @keywords internal
+#' @noRd
+track_finish_angles <- function(data, key, theta, arc, width, aggregate, has_value) {
     if (!"x" %in% names(data) && !isTRUE(data$.circos_has_value) && !isTRUE(has_value)) {
         data$x <- 0  # placeholder; the position owns it
     }
     data$y <- theta
-    # Rows that share a node split its arc evenly, in data order. This is a
-    # *sequence along the arc* for every geometry that draws one mark per row:
-    # a tile track is a heatmap, an area/line track is a coverage profile, and
-    # a column track with several measurements per node is a brush of bars.
-    #
-    # Aggregating geoms are exempt: their stat folds the rows into one mark per
-    # node, so that mark spans the whole arc. Which ones aggregate is declared
-    # once, in `track_geom_spec()`; listing names here instead is how violin
-    # first came out as one flat line (B41).
-    #
-    # With one row per node the bin is the whole `width` share of the arc, so
-    # the split is bit-identical to centring on `theta` and nothing changes for
-    # the common single-value track.
-    #
-    # The angular extent goes through ymin/ymax, not the `width`/`height`
-    # aesthetics: those are aesthetics, and a data column with an aesthetic's
-    # name is overwritten by the layer's default_aes.
+    data$.circos_theta <- theta
+    data$.circos_arc <- arc
+    # Rows that share a node split its arc evenly, in data order: a tile is a
+    # heatmap, an area/line a coverage profile, a column track a brush of bars.
+    # Aggregating geoms are exempt (their stat folds the rows into one mark that
+    # keeps the whole arc); which they are is declared in `track_geom_spec()`.
     if (aggregate) {
         half <- arc * width / 2
         data$ymin <- theta - half
         data$ymax <- theta + half
-        # The stat needs that half-width, and it cannot read it back off
-        # `ymin`/`ymax`: a node that straddles the seam has ymin < 0, and the
-        # angle scale (`limits = c(0, 2*pi)`, `oob = squish`) clamps it to 0
-        # before the stat runs. The stat then saw a half-width of (0 + arc)/2
-        # instead of arc/2 and drew the straddling violin at the wrong spread
-        # (B41). `.circos_half` is a plain column mapped as an aesthetic, so
-        # the scale never touches it.
+        # `.circos_half` is a mapped column, not derived from ymin/ymax: a node
+        # crossing the seam has ymin < 0, which the angle scale clamps before
+        # the stat runs (B41).
         data$.circos_half <- half
     } else {
-        k <- as.numeric(stats::ave(seq_along(idx), idx, FUN = seq_along))
-        m <- as.numeric(stats::ave(seq_along(idx), idx, FUN = length))
+        k <- as.numeric(stats::ave(seq_along(key), key, FUN = seq_along))
+        m <- as.numeric(stats::ave(seq_along(key), key, FUN = length))
         bin_w <- arc * width / m
-        data$ymin <- nt$theta0[idx] + (arc - bin_w * m) / 2 + (k - 1) * bin_w
+        data$ymin <- (theta - arc / 2) + (arc - bin_w * m) / 2 + (k - 1) * bin_w
         data$ymax <- data$ymin + bin_w
     }
     data

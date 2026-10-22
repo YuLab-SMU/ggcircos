@@ -31,8 +31,9 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   centre, instead of dropping them; `loop_depth` sets how deep they fold.
 * `by =` lays out one ring **per group of a node-table column**, each with its
   own node subset and ordering -- the facet "B-plan" (spec §9.1). Finish with
-  `facet_wrap(~ <the same column>)`. `geom_chord()` and the node geoms work per
-  panel; `geom_track()` on a `by =` plot is a later step.
+  `facet_wrap(~ <the same column>)`. Chords, node geoms and tracks all work per
+  panel; track rows are placed by their own group's node table, so the track
+  data needs the grouping column too.
 * `facet_wrap()` splits chords per panel while the node ring is shared (the
   A-plan; `by =` is the alternative).
 

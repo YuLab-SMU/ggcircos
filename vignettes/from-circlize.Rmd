@@ -155,8 +155,27 @@ ggcircos(links, nodes = nodes, by = "grp", weight = "w") +
 A link belongs to the panel named in its own `grp` column; a node id may repeat
 across groups, since each panel is laid out independently. Without a link
 column, a link is filed under the group of its two ends, and one that spans
-groups is dropped. `geom_track()` is not supported on a `by =` plot yet --
-tracks need each panel's own band.
+groups is dropped.
+
+Tracks work too, and each panel places its own: a row is put at the angle
+*its* group gives that node, so the same id can sit in a different place in
+different rings. The track data therefore needs the grouping column as well.
+
+```{r facet-by-track, fig.width = 8, fig.height = 4.5, fig.cap = "Tracks on a by = plot: each panel places its own track, and the axis stands before that panel's first node."}
+trk <- data.frame(
+  id  = c(paste0("g", 1:5), paste0("g", 6:10)),
+  grp = rep(c("sample A", "sample B"), each = 5),
+  gc  = runif(10, 0.25, 0.75),
+  stringsAsFactors = FALSE
+)
+ggcircos(links, nodes = nodes, by = "grp", weight = "w",
+         tracks = c(gc = 0.22)) +
+  geom_chord(aes(fill = w)) +
+  geom_track(data = trk, aes(x = gc), node = id, band = "gc",
+             fill = "steelblue", colour = NA) +
+  geom_track_axis(band = "gc", limits = c(0, 1)) +
+  facet_wrap(~ grp)
+```
 
 ### Scales and legends
 

@@ -12,7 +12,9 @@ track_angles(
   geom = "col",
   has_value = FALSE,
   ...,
-  aggregate = NULL
+  aggregate = NULL,
+  layouts = NULL,
+  group = NULL
 )
 }
 \arguments{
@@ -39,6 +41,13 @@ a positional argument there would silently land on it.}
 (\code{"boxplot"}, \code{"violin"}). Such a mark keeps the node's whole arc rather
 than one bin of it. \code{NULL} asks \code{track_geom_spec()}; pass it explicitly
 when calling this function with a geometry of your own.}
+
+\item{layouts}{A \code{circos_layouts} list (the \verb{by = } result) instead of a
+single layout: every row is then placed by the node table of its own
+group, so two rings may put the same id at different angles.}
+
+\item{group}{Name of the column in \code{data} that says which group a row
+belongs to. Required with \code{layouts}.}
 }
 \value{
 \code{data} with the angle columns added.

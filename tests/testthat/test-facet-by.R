@@ -122,3 +122,69 @@ test_that("by= needs the grouping column on the node table", {
         class = "ggcircos_error_data"
     )
 })
+
+test_that("a track is placed by its own group's node table (B45)", {
+    # A group of four nodes and a group of two: the arcs differ, so a track
+    # placed from the wrong table would land on the wrong angles.
+    nodes <- data.frame(
+        id = c("a", "b", "c", "d", "x", "y"),
+        grp = c(rep("A", 4), rep("B", 2)),
+        stringsAsFactors = FALSE
+    )
+    links <- data.frame(
+        from = c("a", "b", "c", "x"),
+        to   = c("b", "c", "d", "y"),
+        grp  = c(rep("A", 3), "B"),
+        stringsAsFactors = FALSE
+    )
+    trk <- data.frame(
+        id = c("a", "b", "c", "d", "x", "y"),
+        grp = c(rep("A", 4), rep("B", 2)),
+        val = seq(0.1, 0.6, length.out = 6),
+        stringsAsFactors = FALSE
+    )
+    lays <- circos_layout(links, nodes = nodes, by = "grp", tracks = c(t = 0.2))
+    p <- ggcircos(links, nodes = nodes, by = "grp", tracks = c(t = 0.2)) +
+        geom_track(data = trk, aes(x = val), node = id, band = "t") +
+        ggplot2::facet_wrap(~ grp)
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+
+    # every row landed on its own group's angle
+    for (k in c("A", "B")) {
+        panel <- if (k == "A") 1L else 2L
+        rows <- d[d$PANEL == panel, ]
+        want <- layout_nodes(lays[[k]])$theta
+        expect_setequal(round(rows$y, 9), round(want, 9))
+    }
+    # and the values sit inside the band
+    tr <- layout_tracks(lays$A)
+    expect_true(all(d$x >= tr$r0 - 1e-8 & d$x <= tr$r1 + 1e-8))
+})
+
+test_that("a track on a by= plot needs its grouping column (B45)", {
+    nodes <- data.frame(id = c("a", "b", "x", "y"),
+                        grp = rep(c("A", "B"), each = 2), stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a", "x"), to = c("b", "y"),
+                        grp = c("A", "B"), stringsAsFactors = FALSE)
+    trk <- data.frame(id = c("a", "x"), val = c(0.3, 0.7), stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "grp", tracks = c(t = 0.2))
+    # the track data has no group column, so its rows cannot be placed
+    expect_error(
+        p + geom_track(data = trk, aes(x = val), node = id, band = "t"),
+        class = "ggcircos_error_data"
+    )
+})
+
+test_that("the axis on a by= plot stands before each panel's first node (B45)", {
+    nodes <- data.frame(id = c("a", "b", "c", "d", "x", "y"),
+                        grp = c(rep("A", 4), rep("B", 2)), stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a", "b", "c", "x"), to = c("b", "c", "d", "y"),
+                        grp = c(rep("A", 3), "B"), stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "grp", tracks = c(t = 0.2)) +
+        geom_track_axis(band = "t", limits = c(0, 1)) +
+        ggplot2::facet_wrap(~ grp)
+    expect_s3_class(ggplot2::ggplotGrob(p), "gtable")
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    # one axis per panel
+    expect_equal(length(unique(d$PANEL)), 2L)
+})

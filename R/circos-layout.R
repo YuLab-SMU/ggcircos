@@ -87,7 +87,17 @@ circos_layout <- function(x,
                           by = NULL,
                           ...) {
     if (!is.null(by)) {
-        return(circos_layout_by(x, by, nodes = nodes, ...))
+        # every named argument of the generic is a real layout setting; the
+        # `by` path must forward all of them, not just `nodes` -- a lost
+        # `tracks` silently built every panel without its bands
+        return(circos_layout_by(
+            x, by = by, nodes = nodes, sectors = sectors, order = order,
+            gap = gap, sector_gap = sector_gap, start = start,
+            slot_fill = slot_fill, slot_gap = slot_gap,
+            self_loops = self_loops, loop_depth = loop_depth,
+            tracks = tracks, track_offset = track_offset,
+            radius = radius, weight = weight, ...
+        ))
     }
     UseMethod("circos_layout")
 }
@@ -107,7 +117,11 @@ circos_layout <- function(x,
 #'   `circos_layout` with a `panel` attribute holding its group value.
 #' @keywords internal
 #' @noRd
-circos_layout_by <- function(x, by, nodes = NULL, ...) {
+circos_layout_by <- function(x, by, nodes = NULL, sectors = NULL, order = NULL,
+                             gap = 0.01, sector_gap = 0.05, start = 0,
+                             slot_fill = 0.9, slot_gap = NULL, self_loops = FALSE,
+                             loop_depth = 0.5, tracks = NULL, track_offset = 0.06,
+                             radius = 1, weight = NULL, ...) {
     links <- circos_links_of(x)
     nt <- circos_node_table_of(x, nodes, links)
     if (!is.character(by) || length(by) != 1L || !by %in% names(nt)) {
@@ -156,7 +170,11 @@ circos_layout_by <- function(x, by, nodes = NULL, ...) {
         lay <- circos_layout(
             links[keep, , drop = FALSE],
             nodes = nt[node_rows, , drop = FALSE],
-            ...
+            sectors = sectors, order = order, gap = gap, sector_gap = sector_gap,
+            start = start, slot_fill = slot_fill, slot_gap = slot_gap,
+            self_loops = self_loops, loop_depth = loop_depth,
+            tracks = tracks, track_offset = track_offset,
+            radius = radius, weight = weight, ...
         )
         attr(lay, "panel") <- k
         lay

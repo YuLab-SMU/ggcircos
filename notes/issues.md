@@ -898,6 +898,42 @@ spec §9.1 的 A-plan（甲方案）只切弦、节点环共享；D1 杀手图�
 不同节点数导致不同弧宽、显式组列 + 组内重名、跨组链接丢弃提示、`ggcircos(by=)` 出的
 两 panel 各自节点集、track/from-to 的清晰报错、`by` 缺列报错。
 
+### B45. `by =` 下轨道无处安放 —— **已支持每 panel 自己的轨道（2026-10-22）**
+
+B44 落地时把 `geom_track()` 在 `by =` 下明确拒了（"轨道需要每 panel 自己的 band"）。
+现在补上。
+
+**为什么其实比预想的容易**：**轨道带是共享的**。`tracks =` 是一个全局设置，
+各组的 band 半径相同（实测两组都是 r ∈ [1.06, 1.26]），所以 `PositionTrack` 仍然只需
+一个 band，不必按 panel 分裂。真正要按组算的只有**角度**：一行落在哪个角度，取决于
+它属于哪一环、那一环的节点表怎么排。
+
+**改动**：
+
+- `track_angles()` 收下 `layouts`（各组 layout 列表）+ `group`（行属于哪组），
+  逐组查该组的节点表得到每行的 `theta` 与 `arc`；
+- 顺带把"算完 theta/arc 之后写 y/ymin/ymax"这段抽成 `track_finish_angles()`，
+  单 layout 与多 layout 共用。**`ymin` 改成从 `theta - arc/2` 算**，不再从
+  `nt$theta0` 取——两者对单 layout 等价，但多 layout 下每个组的 `theta0` 不同，
+  用 `theta`/`arc` 才都对；
+- `ggplot_add.ggcircos_track()` 分成两支；`ggplot_add.ggcircos_axis()` 同理，
+  刻度落在**各 panel 自己的首节点之前**（用堆叠后的节点表）。
+
+**踩到的坑**：
+
+1. **`circos_layout()` 的具名参数在 `by` 分支里全丢了**。generic 把 `tracks`、
+   `sectors`、`order`、`gap`… 都声明成形参，`by` 分支却只转发 `nodes` 和 `...`，
+   于是每组 layout **没有轨道带**（`layout_tracks()` 是 0 行）。修法：`by` 分支
+   显式转发每一个形参。**这正是"转发 `...` 看起来等价"的一个反例。**
+2. **错误发生在加层时，不是 build 时**。测试里写 `expect_error(ggplot_build(p) + facet_wrap(...))`
+   永远测不到——layer 早就加过了，`ggplot_add` 里就抛了。改成 `expect_error(p + geom_track(...))`。
+3. **built 的 layer 里没有分组列**（ggplot2 只保留美学），所以验证"落在自己那组的角度"
+   要靠 `PANEL`，不能靠分组列。
+
+回归测试（`test-facet-by.R` 追加三个 `test_that`）：轨道每行的角度等于**自己那组**的
+theta（用 4 节点 vs 2 节点的两组，角度必然不同，错用另一张表就会露馅）、轨道数据缺分组列
+时报 classed error、轴在每个 panel 各画一份。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**
