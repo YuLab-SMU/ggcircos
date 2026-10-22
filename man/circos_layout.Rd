@@ -25,6 +25,7 @@ circos_layout(
   track_offset = 0.06,
   radius = 1,
   weight = NULL,
+  by = NULL,
   ...
 )
 
@@ -97,6 +98,12 @@ its link's weight (negative values count by magnitude). \code{NULL}, the
 default, gives every node an equal arc and every link an equal share of
 it -- the value then only shows through \code{aes(fill = )}.}
 
+\item{by}{Name of a \strong{node-table} column to lay out one ring per group of
+its values (spec §9.1). Returns a \code{circos_layouts} list, each element a
+full layout with a \code{panel} attribute; a link belongs to the group named in
+its own column of the same name, or -- without one -- to the group of its
+two ends (a link spanning groups is dropped). \code{NULL} builds one layout.}
+
 \item{...}{Used by the methods to build the node table from graph objects.}
 
 \item{columns}{Optional named character vector mapping the layout's column
@@ -105,7 +112,8 @@ BLAST table output. The rename is a copy; columns you do not map travel
 with the link table, so \verb{weight =} and \code{aes()} can still reach them.}
 }
 \value{
-An object of class \code{circos_layout}.
+An object of class \code{circos_layout}, or -- when \code{by} is given -- a
+\code{circos_layouts} list of them.
 }
 \description{
 A \code{circos_layout} turns a set of nodes and links into polar coordinates.

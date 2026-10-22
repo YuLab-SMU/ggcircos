@@ -52,9 +52,15 @@
 #'   it -- the value then only shows through `aes(fill = )`.
 #' @param radius Base radius of the node ring. `0` puts the ring on the
 #'   spine of a linear (`coord_arc()`) layout.
+#' @param by Name of a **node-table** column to lay out one ring per group of
+#'   its values (spec §9.1). Returns a `circos_layouts` list, each element a
+#'   full layout with a `panel` attribute; a link belongs to the group named in
+#'   its own column of the same name, or -- without one -- to the group of its
+#'   two ends (a link spanning groups is dropped). `NULL` builds one layout.
 #' @param ... Used by the methods to build the node table from graph objects.
 #'
-#' @return An object of class `circos_layout`.
+#' @return An object of class `circos_layout`, or -- when `by` is given -- a
+#'   `circos_layouts` list of them.
 #' @seealso [ggcircos()], [layout_nodes()], [layout_links()]
 #' @examples
 #' m <- cor(mtcars)
@@ -78,8 +84,118 @@ circos_layout <- function(x,
                           track_offset = 0.06,
                           radius = 1,
                           weight = NULL,
+                          by = NULL,
                           ...) {
+    if (!is.null(by)) {
+        return(circos_layout_by(x, by, nodes = nodes, ...))
+    }
     UseMethod("circos_layout")
+}
+
+#' Build one layout per group (the facet B-plan, spec §9.1)
+#'
+#' `by` names a column of the *node table*: it decides which nodes belong to
+#' which panel, not which links. Each group is laid out on its own -- its own
+#' node order and arc widths -- which is the point of the B-plan relative to
+#' the shared-ring A-plan.
+#'
+#' A link is filed under the group of **its two endpoints**. When they disagree
+#' (a link spanning two panels) it is dropped, like a self-loop that cannot be
+#' drawn: there is no single ring it belongs to.
+#'
+#' @return A `circos_layouts` list; every element is an ordinary
+#'   `circos_layout` with a `panel` attribute holding its group value.
+#' @keywords internal
+#' @noRd
+circos_layout_by <- function(x, by, nodes = NULL, ...) {
+    links <- circos_links_of(x)
+    nt <- circos_node_table_of(x, nodes, links)
+    if (!is.character(by) || length(by) != 1L || !by %in% names(nt)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.arg by} must name a column of the node table; {.val {by}} is not one.",
+                i = "Node columns: {.val {names(nt)}}.",
+                i = "Put the grouping column on {.arg nodes}."
+            )
+        )
+    }
+    if (anyNA(nt[[by]])) {
+        ggcircos_abort("data", "The {.field {by}} column has missing values; every node needs a panel.")
+    }
+    keys <- unique(as.character(nt[[by]]))
+
+    # A link's panel: its own grouping column if it has one (unambiguous), else
+    # the group of its two endpoints -- and there a spanning link has no home.
+    if (by %in% names(links)) {
+        link_grp <- as.character(links[[by]])
+        if (anyNA(link_grp)) {
+            ggcircos_abort("data", "The link table's {.field {by}} column has missing values.")
+        }
+    } else {
+        # No link-level group: infer from the endpoints. A node id may repeat
+        # across groups, so the id -> group lookup keeps the FIRST group that
+        # names it (documented: give the links a group column when ids repeat,
+        # or the inference is ambiguous by construction).
+        id_group <- tapply(as.character(nt[[by]]), nt$id, function(z) z[1])
+        g_from <- unname(id_group[as.character(links$from)])
+        g_to <- unname(id_group[as.character(links$to)])
+        same <- !is.na(g_from) & !is.na(g_to) & g_from == g_to
+        if (any(!same)) {
+            cli::cli_inform(c(
+                "i" = "Dropped {sum(!same)} link{?s} whose ends fall in different {.field {by}} groups; \
+                       each panel is its own ring. Add a {.field {by}} column to the links to file them explicitly."
+            ))
+        }
+        link_grp <- ifelse(same, g_from, NA_character_)
+    }
+
+    out <- lapply(keys, function(k) {
+        keep <- !is.na(link_grp) & link_grp == k
+        node_rows <- as.character(nt[[by]]) == k
+        lay <- circos_layout(
+            links[keep, , drop = FALSE],
+            nodes = nt[node_rows, , drop = FALSE],
+            ...
+        )
+        attr(lay, "panel") <- k
+        lay
+    })
+    names(out) <- keys
+    class(out) <- c("circos_layouts", "list")
+    out
+}
+
+#' Recover the link table from any supported input
+#' @keywords internal
+#' @noRd
+circos_links_of <- function(x) {
+    if (is.data.frame(x)) return(x)
+    if (is.matrix(x)) {
+        cells <- which(upper.tri(x) & !is.na(x), arr.ind = TRUE)
+        return(data.frame(
+            from = rownames(x)[cells[, 1]],
+            to = colnames(x)[cells[, 2]],
+            r = as.vector(x[cells]),
+            stringsAsFactors = FALSE
+        ))
+    }
+    ggcircos_abort("data", "{.arg by} supports a matrix or a data.frame input, not {.cls {class(x)}}.")
+}
+
+#' Recover (or build) the node table with the grouping column
+#' @keywords internal
+#' @noRd
+circos_node_table_of <- function(x, nodes, links) {
+    if (!is.null(nodes)) return(as.data.frame(nodes, stringsAsFactors = FALSE))
+    # no node table: the input carries no grouping column, so `by` cannot work
+    ggcircos_abort(
+        "data",
+        c(
+            "{.arg by} needs a {.arg nodes} table that has the grouping column.",
+            i = "A bare link table has no per-node group; pass {.arg nodes = }."
+        )
+    )
 }
 
 #' @export
@@ -941,27 +1057,38 @@ check_layout_invariants <- function(nd, links, g, sg) {
 
 #' Node table of a layout
 #'
-#' @param x A `circos_layout`.
+#' @param x A `circos_layout`, or a `circos_layouts` list (the `by =` result),
+#'   in which case a named list of the per-panel tables is returned.
 #' @return A data frame; see [circos_layout()] for the column contract.
 #' @rdname layout_nodes
 #' @export
-layout_nodes <- function(x) x$nodes
+layout_nodes <- function(x) layout_each(x, "nodes")
+
+#' @keywords internal
+#' @noRd
+layout_each <- function(x, field) {
+    if (inherits(x, "circos_layouts")) {
+        out <- lapply(x, function(l) l[[field]])
+        return(out)
+    }
+    x[[field]]
+}
 
 #' @rdname layout_nodes
 #' @export
-layout_links <- function(x) x$links
+layout_links <- function(x) layout_each(x, "links")
 
 #' @rdname layout_nodes
 #' @export
-layout_sectors <- function(x) x$sectors
+layout_sectors <- function(x) layout_each(x, "sectors")
 
 #' @rdname layout_nodes
 #' @export
-layout_tracks <- function(x) x$tracks
+layout_tracks <- function(x) layout_each(x, "tracks")
 
 #' @rdname layout_nodes
 #' @export
-layout_params <- function(x) x$params
+layout_params <- function(x) layout_each(x, "params")
 
 #' The layout carried by a plot
 #'
@@ -979,6 +1106,19 @@ circos_layout_of <- function(plot) {
     d <- plot$data
     if (!is.data.frame(d)) return(NULL)
     attr(d, "circos_layout", exact = TRUE)
+}
+
+#' @export
+#' @export
+print.circos_layouts <- function(x, ...) {
+    cat("<ggcircos layouts> (one ring per group)
+")
+    for (k in names(x)) {
+        cat("  [", k, "] nodes: ", nrow(x[[k]]$nodes),
+            ", links: ", nrow(x[[k]]$links), "
+", sep = "")
+    }
+    invisible(x)
 }
 
 #' @export

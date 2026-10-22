@@ -863,6 +863,41 @@ PNG 有 7.2 万像素不同，而我这次的改动对它**零像素影响**（H
 **教训**：改 README 的几何/默认值时，别只看 git 有没有提示图变了——用同一份代码
 重渲染两次对比，才能分清"图真变了"和"图早就是旧的"。
 
+### B44. facet 乙方案：`by =` 一次出多个独立环 —— **已落地（2026-10-22）**
+
+spec §9.1 的 A-plan（甲方案）只切弦、节点环共享；D1 杀手图要的"每样本独立环"一直
+挂在 §17-8。现在 `ggcircos(..., by = <节点表列>)` + `facet_wrap(~ <同列>)` 给出乙方案：
+每个 panel 自己一套节点、自己的排序与弧长。
+
+**关键设计**（都写进 spec §9.1）：
+
+- **节点身份是 `(组, id)` 二元组**：同一 id 可以在不同组各出现一次（每样本各有自己的
+  `a`、`b`……），组内唯一即可。"分组"是在组内**重建**一个环，不是把大图切块。
+- **链接归位优先看自己的组列**：链接表有与 `by` 同名的列就用它（最明确）；没有才按两端
+  节点组推断，此时跨组的线丢弃并 `cli_inform()`。
+- **数据流**：`circos_layout(by=)` 返回 `circos_layouts` 列表；`ggcircos(by=)` 把各组的
+  nodes/links/sectors **堆叠**成带分组列的合并表挂到 plot 上，`facet_wrap` 再按该列切。
+  **几何层完全不用改**——它照旧读"一张表"，只是这张表现在带了个 panel 列。
+
+**踩到的坑**：
+
+1. **空表加列会报错**。没有 `tracks` 的组其 `layout_tracks()` 是 0 行，`d[[key]] <- k`
+   在 0 行 frame 上赋长度 1 的值会 `replacement has 1 row, data has 0`。
+   写成 `d[[key]] <- if (nrow(d)) k else character(0)`。
+2. **`require_layout()` 在多 layout 下返回 NULL 会炸**。chord 层与 node 层改成先查
+   `circos_layouts_of(plot)`：有就走"堆叠表"路径，没有才要单个 layout。
+3. **`print.circos_layout` 的 `@export` 一度被我顺手删掉**，S3 注册丢失，`print(layout)`
+   退化成 list 打印，`test-layout.R` 的 read-only 断言抓到。教训：加新 S3 method 时
+   别动到旁边那条的 roxygen 标签。
+
+**首版范围**：`geom_chord()`、`geom_node_arc/text/point()`、`geom_sector_label()` 支持；
+**`geom_track()` / `geom_track_axis()` 报清晰的 `ggcircos_error_data`**——轨道要每 panel
+自己的 band 与 `track_angles()` 按组查角度，是下一步。
+
+回归测试：`tests/testthat/test-facet-by.R`（7 个 `test_that`）：每组独立建 layout、
+不同节点数导致不同弧宽、显式组列 + 组内重名、跨组链接丢弃提示、`ggcircos(by=)` 出的
+两 panel 各自节点集、track/from-to 的清晰报错、`by` 缺列报错。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

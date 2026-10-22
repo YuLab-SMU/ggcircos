@@ -58,21 +58,28 @@ drop_geometry_params <- function(object) {
 #' @noRd
 #' @exportS3Method ggplot2::ggplot_add
 ggplot_add.ggcircos_node <- function(object, plot, object_name, ...) {
-    lay <- require_layout(plot, object_name)
+    params <- layer_settings(object)
+    # the B-plan (`ggcircos(by = )`) stacks per-panel tables; the node geoms
+    # read those (each row carries the grouping column, so facet_wrap splits
+    # them) instead of a single layout
+    node_tab <- circos_stacked(plot, "nodes")
+    sec_tab <- circos_stacked(plot, "sectors")
+    lay <- if (is.null(node_tab)) require_layout(plot, object_name) else NULL
     params <- layer_settings(object)
     offset <- params$offset %||% 0.01
     # Labels sit outside the *outermost band*, not merely outside the node
     # ring: with tracks declared, an offset measured from r = 1 lands the
     # labels exactly under the first band (whose inner edge is 1 + offset).
     # `geom_node_arc()` draws the ring itself, so it is never pushed.
+    track_tab <- circos_stacked(plot, "tracks")
     push <- if (inherits(object$geom, "GeomNodeArc")) 0 else
-        max(layout_tracks(lay)$r1, 1) - 1
+        max(if (is.null(track_tab)) layout_tracks(lay)$r1 else track_tab$r1, 1) - 1
     offset <- offset + push
 
     no_data <- is.null(object$data) || is_waive(object$data)
     if (inherits(object$geom, "GeomSectorLabel")) {
         if (no_data) {
-            object$data <- lay$sectors
+            object$data <- if (!is.null(sec_tab)) sec_tab else lay$sectors
             object$mapping <- merge_mapping(object$mapping, sector_defaults(offset))
             object$inherit.aes <- FALSE
         }
@@ -85,7 +92,7 @@ ggplot_add.ggcircos_node <- function(object, plot, object_name, ...) {
             object$geom_params$rotate <- identical(angle, "radial")
         }
     } else if (no_data) {
-        object$data <- lay$nodes
+        object$data <- if (!is.null(node_tab)) node_tab else lay$nodes
         object$inherit.aes <- FALSE
         object$mapping <- merge_mapping(
             object$mapping, node_defaults(object$geom, params, offset)
@@ -170,10 +177,26 @@ merge_mapping <- function(mapping, defaults) {
 #' @noRd
 #' @exportS3Method ggplot2::ggplot_add
 ggplot_add.ggcircos_chord <- function(object, plot, object_name, ...) {
-    lay <- require_layout(plot, object_name)
+    # the B-plan (`ggcircos(by = )`) already stacked every panel's slot columns
+    # into the plot's link table, with the grouping column; the default path
+    # reads that table directly, so no single layout is needed
+    lays <- circos_layouts_of(plot)
+    lay <- if (is.null(lays)) require_layout(plot, object_name) else NULL
     params <- layer_settings(object)
     from <- chord_endpoint(object, params, "from")
     to <- chord_endpoint(object, params, "to")
+
+    if (!is.null(lays) && (!is.null(from) || !is.null(to))) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.arg from}/{.arg to} cannot be resolved when {.fn ggcircos} built one ring \
+                 per group ({.arg by = }).",
+                i = "Map ",
+                i = "Drop {.arg from}/{.arg to}: the plot's link table already carries the slots."
+            )
+        )
+    }
 
     if (!is.null(from) || !is.null(to)) {
         if (is.null(from) || is.null(to)) {
@@ -321,6 +344,17 @@ layout_slots <- function(lay, from, to) {
 #' @noRd
 #' @exportS3Method ggplot2::ggplot_add
 ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
+    if (!is.null(circos_layouts_of(plot))) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.fn geom_track} is not supported on a {.arg by = } plot yet.",
+                i = "The B-plan (one ring per group) draws chords and the node ring; \
+                    tracks need each panel's own band, which is a later step.",
+                i = "Drop {.arg by = } to use tracks on a single shared layout."
+            )
+        )
+    }
     lay <- require_layout(plot, object_name)
     params <- layer_settings(object)
     band <- track_band(params$band_name, params$band, layout_node_table(lay))

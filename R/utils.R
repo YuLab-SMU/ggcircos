@@ -155,6 +155,42 @@ layer_settings <- function(object) object$ggcircos %||% list()
 
 #' @keywords internal
 #' @noRd
+#' The multiple-layout list attached by `ggcircos(by = )`, or `NULL`
+#' @keywords internal
+#' @noRd
+circos_layouts_of <- function(plot) {
+    d <- plot$data
+    if (!is.data.frame(d)) return(NULL)
+    attr(d, "circos_layouts", exact = TRUE)
+}
+
+#' Stacked tables for the B-plan, with the grouping column
+#'
+#' `ggcircos(by = )` lays each group out separately and stacks the tables here
+#' (spec §9.1). A layer that would read `lay$nodes` in the single-layout case
+#' reads this instead; the extra column is what `facet_wrap()` splits on.
+#' @keywords internal
+#' @noRd
+circos_stacked <- function(plot, kind = c("nodes", "sectors", "tracks")) {
+    kind <- match.arg(kind)
+    d <- plot$data
+    nm <- paste0("circos_layouts_", kind)
+    if (is.data.frame(d)) {
+        v <- attr(d, nm, exact = TRUE)
+        if (!is.null(v)) return(v)
+    }
+    lays <- circos_layouts_of(plot)
+    if (is.null(lays)) return(NULL)
+    key <- attr(d, "circos_by_key", exact = TRUE)
+    getter <- switch(kind, nodes = layout_nodes, sectors = layout_sectors, tracks = layout_tracks)
+    pieces <- lapply(names(lays), function(k) {
+        z <- as.data.frame(getter(lays[[k]]), stringsAsFactors = FALSE)
+        if (!is.null(key)) z[[key]] <- if (nrow(z)) k else character(0)
+        z
+    })
+    do.call(rbind, pieces)
+}
+
 re_add <- function(object, plot, object_name) {
     class(object) <- setdiff(class(object), c(
         "ggcircos_chord", "ggcircos_node", "ggcircos_track", "ggcircos_axis"

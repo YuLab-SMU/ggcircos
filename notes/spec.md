@@ -964,9 +964,33 @@ ggcircos(
 | `geom_node_*` 按 facet 切 | **否**：每 panel 画全部节点（这是甲方案的已知行为） |
 | README / vignette 的描述 | 只能按甲方案写；**不得**说"每个样本一个独立的环" |
 
-**v0.2（乙方案，写进 §17 开放问题）**：facet 按变量重建 layout，每 panel 自己的节点子集。
-实现需要在 `ggplot_add` 里检测 `plot$facet`，并把 facet 变量提升到节点表。
-**定位文档 D1 的"多环"断言按乙方案设计，v0.1 不做，不能拿来做宣传图。**
+**v0.2（乙方案，`by=` 参数）**：facet 按变量**重建 layout**，每 panel 自己的节点子集。
+
+- **契约**：`ggcircos(..., by = <节点表列名>)` 表示"按这一列分组，每组一个独立的环"。
+  分组的列必须在**节点表**里（`nodes=` 给的，或从矩阵/表的行名推出），因为它决定
+  **哪些节点属于哪个 panel**，不是哪些链接。
+- `circos_layout(..., by = col)` 返回一个 **layout 列表**（class `circos_layouts`），
+  每个元素是一个完整的 `circos_layout`，带一个 `panel` 属性记它对应的分组值。
+  `by = NULL`（默认）时行为不变，仍返回单个 `circos_layout`。
+- `ggcircos(..., by = col)` 时：plot 的数据是**所有组链接**拼起来，多一列 facet 变量；
+  每个 panel 的节点环、弦、轨道都来自该组的 layout。`facet_wrap(~ <同一列>)` 收尾。
+- **每 panel 独立排序**（这正是乙方案相对甲方案的价值）：同一套节点在不同样本里
+  可以按各自的权重排序，弧长也各自按该组权重归一。
+- **facet 变量必须与 `by` 一致**：`ggcircos(by = "sample")` 后必须
+  `facet_wrap(~ sample)`，用别的列分面会 `ggcircos_error_data`。
+- **节点身份是 `(组, id)` 二元组**：节点表里同一个 `id` 可以出现在不同组（每个样本
+  各有自己的 `a`、`b`……），只要**组内唯一**。所以"分组"是在每个组内重建一个独立环，
+  不是把一张大图切块。
+- **链接归位**：一条链接属于哪个 panel，优先看它**自己携带的组列**（与 `by` 同名的列）；
+  链接表没有这一列时，才用两端节点所在的组——此时两端分属不同组就**丢弃并
+  `cli::cli_inform()` 一次**（独立环里无处安放）。**推荐**链接表直接给组列，语义最明确。
+- **首版只支持弦与节点环**：`geom_chord()`、`geom_node_arc/text/point()`、
+  `geom_sector_label()` 在 `by =` 下都能用（每 panel 各自的环）。
+  **`geom_track()` / `geom_track_axis()` 暂不支持**——轨道需要每 panel 自己的
+  band 与径向映射，`track_angles()` 现在按单个 layout 查角度表，按组查是下一步。
+  用到时报 `ggcircos_error_data` 并说明。`self_loops` 在 `by =` 下沿用各组自己的设置。
+- **定位文档 D1 的"多环"图**：在乙方案实现前，D1 只能用甲方案的"共享节点环"版本；
+  乙方案落地后 D1 升级为真正的"每样本独立环"，README 与定位文档可以据此更新宣传图。
 
 ### 9.2 美学总表
 
@@ -1225,10 +1249,10 @@ Config/testthat/edition: 3
    **成本**：KDE 是每节点一次 `stats::density()`，实测 200 节点 × 40 样本、`n = 64`：
    `ggplot_build()` 0.32 s，同样数据换成 `col` 轨道 0.06 s，净开销约 0.26 s，不构成瓶颈。
    真正贵的是每节点一个 grob（多边形与线同量级）。
-8. **facet 乙方案（§9.1）**：facet 按变量重建 layout、每 panel 自己的节点子集。
-   这是定位文档 D1"多环"图的前提；v0.1 不做，v0.2 评估。设计要点：
-   `ggplot_add` 检测 `plot$facet`，facet 变量必须在**节点表**里；`circos_layout()`
-   增加 `by` 参数（按列分组重建）。**在此之前，README 与定位文档不得用乙方案的图做宣传。**
+8. **facet 乙方案（§9.1）**：**已落地**（`by =` 参数，2026-10-22）。契约见 §9.1：
+   `circos_layout(by=)` 返回 `circos_layouts` 列表，每 panel 一个独立 layout、
+   自己的节点子集与排序；`ggcircos(by=)` 把它接进 facet。位置文档 D1 的"多环"图
+   现在可以按"每样本独立环"来做。
 
 ---
 

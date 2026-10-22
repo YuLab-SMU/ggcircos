@@ -86,10 +86,17 @@ length(unique(b$layout$layout$PANEL)) == n_samples   # 每样本一个 panel
 length(b$data) == 3                                  # 每层一份数据，不是每 panel 一坨
 ```
 
-**v0.1 的真实语义（spec §9.1 甲方案）**：分面**切开弦**（每 panel 只画本组链接），
-**节点环共享**（每 panel 复制同一套弧）。所以"一次出多个环"成立，但多个环的
-**节点顺序相同**——这是设计，不是缺陷；每 panel 独立排序是 v0.2 的开放问题（spec §17）。
-README 的 facets 图与 `vignette("from-circlize")` 的 facet 一节都是这张图。
+**两种语义，现在都有**：
+
+- **甲方案（默认，共享节点环）**：`ggcircos(links) + facet_wrap(~ sample)` 只切弦，
+  每 panel 复制同一套节点弧，所以各 panel 的节点顺序**相同**。适合"同一批节点、不同样本
+  的连线对比"。
+- **乙方案（`by =`，每 panel 独立环）**：`ggcircos(links, nodes = nodes, by = "sample") +
+  facet_wrap(~ sample)` 让每个 panel 有**自己的节点集、自己的排序与弧长**。这才是真正的
+  "一次出 N 个不同的环"，也是 D1 杀手图的原意。**已落地（B44）**，见 spec §9.1。
+
+README 的 facets 图与 `vignette("from-circlize")` 的 facet 一节用的是甲方案（同一批节点）；
+乙方案的图见 `tests/testthat/test-facet-by.R`。**宣传 D1 时用乙方案**，它才展示结构性差异。
 
 ### D2 — BRIG 式整图（场景入口）
 

@@ -19,7 +19,8 @@ layout_tracks(x)
 layout_params(x)
 }
 \arguments{
-\item{x}{A \code{circos_layout}.}
+\item{x}{A \code{circos_layout}, or a \code{circos_layouts} list (the \verb{by =} result),
+in which case a named list of the per-panel tables is returned.}
 }
 \value{
 A data frame; see \code{\link[=circos_layout]{circos_layout()}} for the column contract.

@@ -21,6 +21,7 @@ ggcircos(
   radius = NULL,
   weight = NULL,
   columns = NULL,
+  by = NULL,
   ...
 )
 }
@@ -52,6 +53,13 @@ values only drive \code{aes(fill = )}.}
 names onto your data's, e.g. \code{c(from = "qaccver", to = "saccver")} for
 BLAST table output. The rename is a copy; columns you do not map travel
 with the link table, so \verb{weight =} and \code{aes()} can still reach them.}
+
+\item{by}{Name of a \strong{node-table} column to lay out one ring per group of
+its values (spec §9.1, the facet "B-plan"). Each panel gets its own node
+subset and its own ordering; finish with \verb{facet_wrap(~ <the same column>)}.
+A link whose two ends fall in different groups is dropped with a message,
+since it belongs to no single ring. \code{NULL} (the default) builds one shared
+layout, the A-plan.}
 
 \item{...}{Passed on to \code{\link[=circos_layout]{circos_layout()}}.}
 }

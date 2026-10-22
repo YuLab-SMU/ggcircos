@@ -176,6 +176,44 @@ ggcircos(links, nodes = nodes, self_loops = TRUE) +
 loop automatically, so several self-loops on a crowded ring do not pile into
 the middle.
 
+## One ring per sample
+
+`facet_wrap()` alone splits the chords but keeps one shared node ring -- every
+panel shows the same nodes in the same order. When each panel should have its
+*own* nodes and its own ordering, pass `by =` a node-table column: the layout
+is then built once per group, and `facet_wrap()` on the same column splits them
+apart.
+
+This is the difference between "the same ring, different links" and "different
+rings". Here each sample has its own node set.
+
+```{r facet-by, fig.width = 8, fig.height = 4.5, fig.cap = "One ring per sample: each panel has its own node set and its own layout, from a single ggcircos(by = ) call."}
+set.seed(1)
+nodes <- data.frame(
+  id  = paste0("g", 1:10),
+  grp = rep(c("sample A", "sample B"), each = 5),
+  stringsAsFactors = FALSE
+)
+links <- data.frame(
+  from = c("g1", "g2", "g3", "g6", "g7", "g8"),
+  to   = c("g2", "g3", "g5", "g7", "g8", "g10"),
+  grp  = rep(c("sample A", "sample B"), each = 3),
+  w    = runif(6, 0.3, 0.9),
+  stringsAsFactors = FALSE
+)
+ggcircos(links, nodes = nodes, by = "grp", weight = "w") +
+  geom_chord(aes(fill = w)) +
+  geom_node_arc() +
+  geom_node_text() +
+  facet_wrap(~ grp)
+```
+
+A link belongs to the panel named in its own `grp` column; a node id may repeat
+across groups, since each panel is laid out independently. Without a link
+column, a link is filed under the group of its two ends, and one that spans
+groups is dropped. `geom_track()` is not on a `by =` plot yet -- tracks need
+each panel's own band.
+
 ## What ggcircos does not do yet
 
 - Self-loops (`from == to`) are drawn only with `self_loops = TRUE`; by

@@ -29,7 +29,12 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   `layout_params()` export the layout as plain data frames.
 * `self_loops = TRUE` draws `from == to` links as small loops folded toward the
   centre, instead of dropping them; `loop_depth` sets how deep they fold.
-* `facet_wrap()` splits chords per panel while the node ring is shared.
+* `by =` lays out one ring **per group of a node-table column**, each with its
+  own node subset and ordering -- the facet "B-plan" (spec §9.1). Finish with
+  `facet_wrap(~ <the same column>)`. `geom_chord()` and the node geoms work per
+  panel; `geom_track()` on a `by =` plot is a later step.
+* `facet_wrap()` splits chords per panel while the node ring is shared (the
+  A-plan; `by =` is the alternative).
 
 ## Rendering
 

@@ -16,6 +16,12 @@ label_space <- 0.22
 #'   Passed to [circos_layout()], which documents each of them.
 #' @param layout `"circular"` for the polar layout, `"arc"` for the linear
 #'   one, where links bulge to the left of a vertical spine.
+#' @param by Name of a **node-table** column to lay out one ring per group of
+#'   its values (spec §9.1, the facet "B-plan"). Each panel gets its own node
+#'   subset and its own ordering; finish with `facet_wrap(~ <the same column>)`.
+#'   A link whose two ends fall in different groups is dropped with a message,
+#'   since it belongs to no single ring. `NULL` (the default) builds one shared
+#'   layout, the A-plan.
 #' @param columns Optional named character vector mapping the layout's column
 #'   names onto your data's, e.g. `c(from = "qaccver", to = "saccver")` for
 #'   BLAST table output. The rename is a copy; columns you do not map travel
@@ -74,9 +80,20 @@ ggcircos <- function(data,
                      radius = NULL,
                      weight = NULL,
                      columns = NULL,
+                     by = NULL,
                      ...) {
     layout <- match.arg(layout)
     radius <- radius %||% if (layout == "arc") 0 else 1
+    if (!is.null(by)) {
+        return(ggcircos_by(
+            data = data, nodes = nodes, by = by, layout = layout,
+            start = start, tracks = tracks, track_offset = track_offset,
+            radius = radius, weight = weight, columns = columns,
+            sectors = sectors, order = order, gap = gap, sector_gap = sector_gap,
+            slot_fill = slot_fill, slot_gap = slot_gap,
+            self_loops = self_loops, ...
+        ))
+    }
 
     # `weight = r` and `weight = "r"` both name a column of the link table;
     # the layout resolves it once and the geometry follows the values
@@ -129,6 +146,66 @@ ggcircos <- function(data,
         # `start` is where theta = 0 sits on the ring, so the coordinate has
         # to be told about it: the layout put the first node there, and the
         # screen angles (spec §5.4) are measured from the same origin
+        p + coord_circos(start = start)
+    }
+}
+#' Build a faceted plot, one ring per group (spec §9.1, B-plan)
+#'
+#' The single-layout `ggcircos()` path hands one `circos_layout` to the plot's
+#' data; every geom reads that one table. The B-plan instead lays out each
+#' group on its own and then **stacks the tables**, adding the grouping column
+#' so `facet_wrap()` splits them. That keeps the geoms untouched: each layer is
+#' still an ordinary consumer of a table, only the table now carries a panel.
+#' @keywords internal
+#' @noRd
+ggcircos_by <- function(data, nodes, by, layout, start, tracks, track_offset,
+                        radius, weight, columns, ...) {
+    lays <- circos_layout(
+        data, nodes = nodes, by = by, radius = radius,
+        weight = weight, columns = columns, ...
+    )
+    if (!inherits(lays, "circos_layouts")) {
+        ggcircos_abort("internal", "circos_layout(by = ) did not return a circos_layouts list.")
+    }
+    key <- if (is.character(by)) by else by[[1]]
+    # one stacked table per kind, each with the grouping column so facet_wrap
+    # can split it. `PANEL`-neutral: the user names the facet with `~ <key>`.
+    stack <- function(getter) {
+        pieces <- lapply(names(lays), function(k) {
+            d <- as.data.frame(getter(lays[[k]]), stringsAsFactors = FALSE)
+            # a 0-row table (no tracks declared, say) still needs the column,
+            # for rbind to line up -- but assigning a length-1 value to a
+            # 0-row frame errors, so write it as a typed empty vector
+            d[[key]] <- if (nrow(d)) k else character(0)
+            d
+        })
+        do.call(rbind, pieces)
+    }
+    links <- stack(layout_links)
+    nodes_all <- stack(layout_nodes)
+    sectors_all <- stack(layout_sectors)
+
+    rmax <- radius
+    tr <- stack(layout_tracks)
+    if (nrow(tr)) rmax <- max(rmax, max(tr$r1))
+    xmax <- rmax + label_space
+    xlim <- if (layout == "arc") c(-1.1, xmax) else c(0, xmax)
+
+    p <- ggplot(data = structure(links, circos_layouts = lays)) +
+        scale_y_continuous(limits = c(0, 2 * pi), expand = c(0, 0),
+                           oob = scales::squish) +
+        scale_x_continuous(limits = xlim, expand = c(0, 0),
+                           oob = scales::oob_keep) +
+        theme_circos()
+    # attach the stacked node/sector tables so the node geoms (which take no
+    # data of their own) can pick them up per panel
+    attr(p$data, "circos_layouts_nodes") <- nodes_all
+    attr(p$data, "circos_layouts_sectors") <- sectors_all
+    attr(p$data, "circos_by_key") <- key
+
+    if (layout == "arc") {
+        p + coord_arc(xlim = xlim, ylim = c(0, 2 * pi))
+    } else {
         p + coord_circos(start = start)
     }
 }
