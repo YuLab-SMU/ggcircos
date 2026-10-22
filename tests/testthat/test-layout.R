@@ -569,3 +569,89 @@ test_that("a single sector's span starts at its first node (R5)", {
                           nodes = nodes2, sectors = "g")
     expect_equal(nrow(layout_sectors(lay2)), 2L)
 })
+
+test_that("self-loops are drawn as loops folded toward the centre (spec 4.7)", {
+    nodes <- data.frame(id = c("a", "b", "c"), stringsAsFactors = FALSE)
+    lk <- data.frame(
+        from = c("a", "a", "b"), to = c("a", "c", "c"),
+        stringsAsFactors = FALSE
+    )
+    lay <- circos_layout(lk, nodes = nodes, self_loops = TRUE)
+    links <- layout_links(lay)
+    nd <- layout_nodes(lay)
+
+    # the loop is kept, as one row, marked as a loop
+    expect_equal(nrow(links), 3L)
+    sl <- links[links$self_loop, ]
+    expect_equal(nrow(sl), 1L)
+    expect_equal(sl$from, sl$to)
+
+    # n_links does not count the loop as an entry into its own node (§4.2),
+    # but the loop still took a slot out of the arc
+    expect_equal(nd$n_links[nd$id == "a"], 1L)   # only a -> c
+    expect_gt(sl$theta1 - sl$theta0, 0)
+
+    # the geometry folds toward the centre without reaching it: feet on the
+    # ring, all points outside r = 0.05
+    m <- self_loop_outline(sl$theta0, sl$theta1, r_node = 1,
+                           node_width = sl$.circos_node_width,
+                           loop_depth = sl$.circos_loop_depth)
+    r <- sqrt(m[, 1]^2 + m[, 2]^2)
+    expect_equal(r[1], 1, tolerance = 1e-9)
+    expect_equal(r[nrow(m)], 1, tolerance = 1e-9)
+    expect_lt(min(r), 1)          # it does fold in
+    expect_gt(min(r), 0.05)       # but never reaches the centre
+
+    # a narrower loop folds LESS deep (§4.7-2): depth scales with the loop's
+    # share of the node's own arc, so a wider slot reaches closer to the centre
+    narrow <- self_loop_outline(0, 0.1, r_node = 1, node_width = 2, loop_depth = 0.5)
+    wide <- self_loop_outline(0, 0.5, r_node = 1, node_width = 2, loop_depth = 0.5)
+    minr <- function(m) min(sqrt(m[, 1]^2 + m[, 2]^2))
+    expect_lt(minr(wide), minr(narrow))
+
+    # the ribbon shares its two feet (both ends land on the ring), so the band
+    # closes instead of ballooning across a sector
+    rb <- self_loop_ribbon(sl$theta0, sl$theta1, sl$theta_end0, sl$theta_end1,
+                           node_width = sl$.circos_node_width,
+                           loop_depth = sl$.circos_loop_depth)
+    rr <- sqrt(rb[, 1]^2 + rb[, 2]^2)
+    expect_equal(rr[1], 1, tolerance = 1e-9)
+    expect_equal(rr[length(rr)], 1, tolerance = 1e-9)
+    ang <- (atan2(rb[, 2], rb[, 1]) %% (2 * pi))
+    # the band stays within the loop's own slot, never a whole turn
+    expect_lt(diff(range(ang)), 2 * pi / 2)
+})
+
+test_that("self-loops reach the chord layer and both types draw (spec 4.7)", {
+    nodes <- data.frame(id = c("a", "b", "c", "d"), stringsAsFactors = FALSE)
+    lk <- data.frame(
+        from = c("a", "a", "b", "b", "c"), to = c("a", "c", "c", "d", "d"),
+        stringsAsFactors = FALSE
+    )
+    lay <- circos_layout(lk, nodes = nodes, self_loops = TRUE)
+    for (type in c("ribbon", "line")) {
+        p <- ggcircos(lay) + geom_chord(type = type)
+        d <- ggplot2::ggplot_build(p)$data[[1]]
+        expect_true("self_loop" %in% names(d))
+        expect_equal(sum(d$self_loop), 1L)
+        # the whole layer renders (grob conversion walks every path)
+        expect_s3_class(ggplot2::ggplotGrob(p), "gtable")
+    }
+})
+
+test_that("loop_depth is validated and changing it changes the fold", {
+    nodes <- data.frame(id = c("a", "b"), stringsAsFactors = FALSE)
+    lk <- data.frame(from = c("a", "a"), to = c("a", "b"), stringsAsFactors = FALSE)
+    expect_error(circos_layout(lk, nodes = nodes, self_loops = TRUE, loop_depth = 0),
+                 class = "ggcircos_error_layout")
+    expect_error(circos_layout(lk, nodes = nodes, self_loops = TRUE, loop_depth = 1.5),
+                 class = "ggcircos_error_layout")
+    shallow <- layout_links(circos_layout(lk, nodes = nodes, self_loops = TRUE, loop_depth = 0.2))
+    deep <- layout_links(circos_layout(lk, nodes = nodes, self_loops = TRUE, loop_depth = 0.9))
+    s <- shallow[shallow$self_loop, ]; dd <- deep[deep$self_loop, ]
+    rs <- sqrt(rowSums(self_loop_outline(s$theta0, s$theta1, node_width = s$.circos_node_width,
+                                         loop_depth = s$.circos_loop_depth)^2))
+    rd <- sqrt(rowSums(self_loop_outline(dd$theta0, dd$theta1, node_width = dd$.circos_node_width,
+                                         loop_depth = dd$.circos_loop_depth)^2))
+    expect_gt(min(rs), min(rd))   # deeper fold sits closer to the centre
+})

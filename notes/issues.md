@@ -816,6 +816,53 @@ ggplot2 按名字在 stat 与 geom 之间分配 `layer(params=)`，同一个名�
 回归测试（`test-tracks-and-contract.R`）：开放曲线 vs 闭合轮廓的行数关系与单侧性、
 两个 geom 共用同一 KDE（逐点相等）、跨缝只切不插点且单段不跨整圈、`stack` 被拒、无密度时出声。
 
+### B43. `self_loops = TRUE` 只会报错；自环从未能画 —— **已加小回环（2026-10-22）**
+
+`from == to` 的边在 v0.1 里两条路都是死路：`self_loops = FALSE`（默认）丢弃并提示，
+`self_loops = TRUE` 直接 `ggcircos_abort()`。spec §17-1 一直挂着"小回环还是整段弧"这个决策。
+
+**决策**：向内折的小回环（用户 2026-10-22 选定，与 circlize 一致）。整段弧会把自环画成
+和自己重合的一整圈，跟节点本身分不开，读不出"这是一条链接"；向内折保持一条边的读法。
+契约落在 spec §4.7，实现落在 `self_loop_outline()` / `self_loop_ribbon()`。
+
+**三个实现坑**（每个都能让自环画歪）：
+
+1. **`n_links` 不能算自环，但 slot 分母要算。** 自环不是"入射边"（§4.2），
+   可它确确实实占着节点弧上的一段；如果分母里不算它，它那条 slot 会被算成整条弧，
+   盖住所有正经链接。所以 `n_links = tabulate(非自环)`，而 `allocate_slots()` 照旧看
+   from/to 两侧的所有行。加测试钉住（`a` 只有 1 条真出边，但自环仍分到 slot）。
+2. **ribbon 必须用同一对脚。** 自环的 from 侧与 to 侧 slot 宽度不同（两侧按不同边数等分，
+   实测 0.68 vs 1.36）。第一版直接把两条不同宽的曲线连起来，band 撑到 0.04–1.43，
+   填成一整块扇形。修法：取较窄的 slot 作回环footprint，两条边都用它，
+   只差折叠深度——深度不同才让中间形成带。
+3. **几何列要跟着 mapping 走。** `self_loop` / `.circos_node_width` / `.circos_loop_depth`
+   得进 `chord_coordinates()` 才能到 `draw_panel()`；但不能无条件加，因为显式
+   `geom_chord(from=, to=)` 的用户表里没有这些列，无条件映射会让 ggplot2 找不到列而报错。
+   所以 `chord_coordinates(data)` 按 frame 有没有这些列决定映不映射，
+   `layout_slots()` 则负责在显式路径下补上它们。
+
+**深度公式**：`depth = loop_depth * slot_span / node_width`（夹在 `[0.05, 0.95]`）。
+窄节点上的自环折得浅，不会一刀捅到圆心挡住别的弦。`loop_depth ∈ (0, 1]`，否则
+`ggcircos_error_layout`。
+
+**顺带发现的既有行为**（未改，记一笔）：矩阵输入只取上三角，所以 `cor(x)` 的对角线
+（自环的自然来源）不会变成自环行。要画自环，用 `from`/`to` 表显式给。
+
+回归测试（`test-layout.R`，三个 `test_that`）：自环被保留并标记、`n_links` 排除自环
+但 slot 仍占位、回环半径 < 1 且 > 0.05、窄节点折得更浅、ribbon 两条边共用脚且只在自身
+slot 内、`loop_depth` 校验与深度随参数变化、两种 `type` 都能渲染。
+
+### C5. README 的 tracks 图与代码不同源 —— **已重渲染（2026-10-22）**
+
+做 B43（自环）时按 AGENTS.md 重渲染 README，发现 `man/figures/README-tracks-1.png`
+换了字节。追下去：用**干净 HEAD** 的代码重渲染同一 chunk，得到的结果与仓库里那张已提交的
+PNG 有 7.2 万像素不同，而我这次的改动对它**零像素影响**（HEAD 重渲染 vs 新代码重渲染
+逐像素相同）。结论：那张图是更早的代码/设备渲染的陈旧产物，一直没跟上。
+
+这正是 AGENTS.md 反复警告的"图停在旧实现上"。已用当前代码重渲染并接受。
+**教训**：改 README 的几何/默认值时，别只看 git 有没有提示图变了——用同一份代码
+重渲染两次对比，才能分清"图真变了"和"图早就是旧的"。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**
@@ -839,11 +886,29 @@ spec §14.4 要求的基线快照已建：`tests/testthat/test-snapshots.R` + `_
 修这三条（B1/B7/B8/B9/A3）时必须用 `NOT_CRAN=true` 跑一遍、逐张确认 SVG 差异**只来自**预期 bug 的修复，
 没有别的漂移，再接受快照。**未知差异 = 回归**，不要直接 `snapshot_accept()`。
 
-### C2. 边界输入测试缺失
+### C2. 边界输入测试缺失 —— **已补（2026-10-22）**
 
-空 df、单节点、NA sector、负 `gap`、重复 node id、`nodes` 表缺 `id`、矩阵含 NA——多数没测，或只测了"不报错"而没测"报什么错"（错误类）。
+新增 `tests/testthat/test-edge-inputs.R`，每条断言**错误类**而不只是"不报错"：
+空 df（无 nodes → `_data`；有 nodes → 合法、列齐全）、单节点整圈、NA sector
+（`_node`）、负 `gap`/`sector_gap`（`_layout`）、NA link（`_data`）、非法/不等长矩阵
+（`_data`）、weight 非数值/Inf/缺列（`_data`）。
 
-### C3. CI 矩阵只有 4.0.3
+**两处原本以为缺测、查完是既有设计**：
+- `nodes` 表无 `id` 列时用**第一列**当 id（宽容，`data.frame(name=)` 能用）；
+- 只给 `from`/`to` 未给 `nodes` 时，未见的 id **自动成为节点**（只有显式给了
+  `nodes` 而缺该 id 才报 `_node`）。
+
+**一个 R 层无法拦截的真实陷阱**（记入已知限制，不修）：`data.frame(from=c("a","b"), to="b")`
+在 `data.frame()` 构造时就把 `to` **静默 recycle** 成两行，进入 `circos_layout()` 时
+已不可辨。这是 R 语言行为，除非要求用户传 list。显式 `NA` 会被拦下（`_data`）。
+
+### C3. CI 矩阵只有 4.0.3 —— **已建 workflow（2026-10-22）**
+
+按 spec §14.5：`ubuntu` × R `release`/`oldrel-1`，两行都**显式 pin ggplot2 4.0.3**
+（§1.4 已定只支持 ≥4.0，3.5 矩阵作废）。判据 `--no-manual --as-cran`、
+`error-on: warning`（与 AGENTS.md 的本地判据一致；PDF manual 属环境缺失）。
+文件 `.github/workflows/R-CMD-check.yaml`，YAML 已过合法性检查。
+**未在本机实跑 Actions**（无 runner）；真跑依赖上游 runner 能装到 ggplot2 4.0.3。
 
 spec §14.5 要求 `3.5.*` 与 `4.0.*` 双版本。A1 定了之后，这里可以直接收到只测 4.0。
 

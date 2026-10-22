@@ -9,3 +9,6 @@ tests/testthat/_problems/
 tests/testthat/testthat-problems.rds
 # written by tests that exercise saveRDS round trips
 plot.rds
+
+# rendered from README.Rmd for GitHub, not committed
+README.html

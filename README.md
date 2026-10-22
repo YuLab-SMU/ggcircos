@@ -144,8 +144,7 @@ ggplot(nd, aes(x = 1, y = theta0)) +
 ## Status and limits
 
 v0.1.0 targets **ggplot2 ≥ 4.0** only (it is built on `coord_radial()`).
-Not yet: self-loops, label collision avoidance, violin/density tracks,
-angular axes, interactive output. These are deliberate — see
+Not yet: angular axes, interactive output. These are deliberate — see
 `vignette("from-circlize")`.
 
 ## License

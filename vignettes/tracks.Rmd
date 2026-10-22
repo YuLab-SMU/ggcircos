@@ -495,10 +495,6 @@ a node that has none is skipped, and a layer where no node qualifies warns.
 
 ## What this does not do yet
 
-* **No self-loops.** A link with `from == to` cannot be drawn in 0.1.0.
-  It is dropped when the layout is built, with a message:
-  `Dropped 1 self-link (from == to); ggcircos 0.1.0 does not draw them.`
-  Asking for `self_loops = TRUE` is an error.
 * **No label collision avoidance.** `geom_node_text()` puts one label on
   each node and nothing checks whether the labels fit. Short nodes next to
   each other produce overlapping text.

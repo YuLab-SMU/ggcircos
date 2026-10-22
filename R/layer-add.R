@@ -203,7 +203,15 @@ ggplot_add.ggcircos_chord <- function(object, plot, object_name, ...) {
         # for scales it cannot build
         object$mapping <- object$mapping[setdiff(names(object$mapping), c("from", "to"))]
     }
-    object$mapping <- merge_mapping(object$mapping, chord_coordinates())
+    # the frame the chord will actually read: the layer's own, else the
+    # layout's link table the plot carries
+    chord_frame <- if (!is.null(object$data) && !is_waive(object$data)) {
+        object$data
+    } else {
+        plot$data
+    }
+    object$mapping <- merge_mapping(object$mapping,
+                                    chord_coordinates(chord_frame))
     re_add(drop_geometry_params(object), plot, object_name)
 }
 
@@ -213,11 +221,17 @@ ggplot_add.ggcircos_chord <- function(object, plot, object_name, ...) {
 #' layout's slot values survive `use_defaults()`.
 #' @keywords internal
 #' @noRd
-chord_coordinates <- function() {
+chord_coordinates <- function(data = NULL) {
     cols <- c(
         "x", "y", "xend", "yend",
         "theta0", "theta1", "theta_end0", "theta_end1"
     )
+    # the self-loop geometry needs to know a row is a loop and how deep to fold
+    # (spec §4.7). Only map those when the frame has them: a caller passing a
+    # bare from/to table has no such columns, and mapping them would make
+    # ggplot2 look for columns that are not there.
+    extra <- c("self_loop", ".circos_node_width", ".circos_loop_depth")
+    if (!is.null(data)) cols <- c(cols, intersect(extra, names(data)))
     stats::setNames(lapply(cols, function(nm) rlang::quo(.data[[!!nm]])), cols)
 }
 
@@ -291,6 +305,11 @@ layout_slots <- function(lay, from, to) {
         theta_end = pick("theta_end", "theta"),
         x = lay$nodes$r[match(from, lay$nodes$id)],
         xend = lay$nodes$r[match(to, lay$nodes$id)],
+        # a self-loop row's own geometry needs these; the caller's table will
+        # not have them, so the layout supplies them here
+        self_loop = lk$self_loop[hit],
+        .circos_node_width = lk$.circos_node_width[hit],
+        .circos_loop_depth = lk$.circos_loop_depth[hit],
         stringsAsFactors = FALSE
     )
 }

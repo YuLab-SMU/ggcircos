@@ -414,6 +414,85 @@ chord_outline_to_polar <- function(mat, id) {
     )
 }
 
+#' Self-loop as a closed band
+#'
+#' Two Bezier curves sharing their feet: the outer one on the ring, the inner
+#' one folded toward the centre, joined at both feet. That is the ribbon a
+#' self-loop should be -- a band whose two edges meet at the two slot corners,
+#' exactly like a normal ribbon's two edges meet at its feet.
+#' @keywords internal
+#' @noRd
+self_loop_ribbon <- function(a0, a1, b0, b1, node_width = 1, loop_depth = 0.5,
+                             ncp = 60L) {
+    # A self-loop is ONE folded band, so both edges must share the same two
+    # feet. The from-side and to-side slots have different widths (the two
+    # sides divide the arc by different degrees); pairing a wide slot with a
+    # narrow one ballooned the band across a whole sector (measured: feet
+    # 0.04-1.43 against a 0.68 slot). Take the narrower slot as the loop's
+    # footprint and give both edges those feet, differing only in fold depth.
+    span_from <- ((a1 - a0) %% (2 * pi))
+    span_to <- ((b1 - b0) %% (2 * pi))
+    span <- if (span_to < span_from) span_to else span_from
+    mid <- a0 + span_from / 2
+    a0 <- mid - span / 2
+    a1 <- mid + span / 2
+    # the band is two curves over the SAME feet, folded by a slightly
+    # different depth: at the feet they meet (radius 1), in between the shallower
+    # one stays outside, so what lies between is the ribbon.
+    outer <- self_loop_outline(a0, a1, r_node = 1, node_width = node_width,
+                               loop_depth = loop_depth, ncp = ncp)
+    inner <- self_loop_outline(a0, a1, r_node = 1, node_width = node_width,
+                               loop_depth = loop_depth * 0.6, ncp = ncp)
+    rbind(outer, inner[rev(seq_len(nrow(inner))), , drop = FALSE])
+}
+
+#' Vertex path for a self-loop, folded toward the centre
+#'
+#' A self-link has no second node to travel to, so the usual Bezier degenerates
+#' to a point. circlize draws it as a small loop that dips toward the centre
+#' instead (spec §4.7): the two feet sit on the node's own arc, and the curve
+#' bulges *inward*, so the link reads as one edge folded back on itself rather
+#' than a full second turn around the ring.
+#'
+#' The depth is `loop_depth * slot_span / node_width` of the radius, clamped
+#' below 1 so the loop never reaches the centre (which would let it cover
+#' every other chord). A narrow node therefore gets a shallow loop.
+#'
+#' @param a0,a1 The two slot edges (radians) of the loop's feet.
+#' @param r_node Radius of the node ring.
+#' @param node_width Arc width of the node the loop belongs to.
+#' @param loop_depth Fold depth as a fraction of the radius at most.
+#' @return A two-column matrix of Cartesian points, one loop.
+#' @keywords internal
+#' @noRd
+self_loop_outline <- function(a0, a1, r_node = 1, node_width = 1,
+                              loop_depth = 0.5, ncp = 60L) {
+    # the loop's own angular span; a node with no width has nothing to fold
+    span <- ((a1 - a0) %% (2 * pi))
+    if (!is.finite(span) || span <= 0) span <- 2 * pi / 180
+    frac <- if (is.finite(node_width) && node_width > 0) {
+        min(1, span / node_width)
+    } else {
+        1
+    }
+    depth <- min(0.95, max(0.05, loop_depth * frac))
+    r_loop <- r_node * (1 - depth)
+    # quadratic Bezier in Cartesian: feet on the ring, control inside it at the
+    # mean angle, which is what makes the curve dip toward the centre
+    mid <- a0 + span / 2
+    p0 <- c(r_node * cos(a0), r_node * sin(a0))
+    p2 <- c(r_node * cos(a1), r_node * sin(a1))
+    p1 <- c(r_loop * cos(mid), r_loop * sin(mid)) * 2 -
+        (p0 + p2) / 2
+    n <- max(8L, as.integer(ncp))
+    t <- seq(0, 1, length.out = n)
+    b <- cbind(
+        (1 - t)^2 * p0[1] + 2 * t * (1 - t) * p1[1] + t^2 * p2[1],
+        (1 - t)^2 * p0[2] + 2 * t * (1 - t) * p1[2] + t^2 * p2[2]
+    )
+    b
+}
+
 #' Vertex paths for the polar layout, in (radius, angle) space.
 #'
 #' The ribbon outline is **ported from circlize** (see [chord_bezier()]):
@@ -429,6 +508,22 @@ chord_paths_polar <- function(data, type, curvature, ncp) {
     out <- list()
     if (type == "ribbon") {
         for (i in seq_len(nrow(data))) {
+            if (isTRUE(data$self_loop[i])) {
+                # a self-loop is one folded band, not a ribbon between two feet
+                # (spec §4.7): draw the centre loop and thicken it by half a
+                # slot on each side, in the plane, so the two offsets stay
+                # parallel the way a ribbon's edges do
+                out[[length(out) + 1L]] <- chord_outline_to_polar(
+                    self_loop_ribbon(
+                        data$theta0[i], data$theta1[i],
+                        data$theta_end0[i], data$theta_end1[i],
+                        node_width = data$.circos_node_width[i] %||% 1,
+                        loop_depth = data$.circos_loop_depth[i] %||% 0.5
+                    ),
+                    i
+                )
+                next
+            }
             outline <- chord_ribbon_outline(
                 a0 = data$theta0[i], a1 = data$theta1[i],
                 b0 = data$theta_end0[i], b1 = data$theta_end1[i],
@@ -438,6 +533,18 @@ chord_paths_polar <- function(data, type, curvature, ncp) {
         }
     } else {
         for (i in seq_len(nrow(data))) {
+            if (isTRUE(data$self_loop[i])) {
+                out[[length(out) + 1L]] <- chord_outline_to_polar(
+                    self_loop_outline(
+                        data$theta0[i], data$theta1[i],
+                        r_node = data$x[i],
+                        node_width = data$.circos_node_width[i] %||% 1,
+                        loop_depth = data$.circos_loop_depth[i] %||% 0.5
+                    ),
+                    i
+                )
+                next
+            }
             t0 <- data$y[i]; t1 <- data$yend[i]
             r0 <- data$x[i]; r1 <- data$xend[i]
             # a line has no width: its spine is the Bezier between the two

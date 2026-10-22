@@ -150,9 +150,36 @@ p_b <- ggcircos(cor(mtcars), order = "hclust", tracks = c(v = 0.25)) +
 p_a + p_b + patchwork::plot_annotation(title = "two rings, one grammar")
 ```
 
+## Self-loops
+
+`circlize` draws a self-link as a small loop folded toward the centre. The
+same is available here: pass `self_loops = TRUE` and a `from == to` row
+becomes a loop on its own node, rather than being dropped. Like circlize's,
+it folds inward instead of running the full way round -- a full turn would
+sit on top of the node and stop reading as a link.
+
+```{r self-loops, fig.width = 5.5, fig.height = 5.5, fig.cap = "A self-loop on node b, drawn as a loop folded toward the centre. The other links are ordinary chords."}
+nodes <- data.frame(id = c("a", "b", "c", "d"), stringsAsFactors = FALSE)
+links <- data.frame(
+  from = c("a", "b", "b", "c", "a"),
+  to   = c("b", "b", "c", "d", "d"),
+  stringsAsFactors = FALSE
+)
+ggcircos(links, nodes = nodes, self_loops = TRUE) +
+  geom_chord(aes(fill = self_loop)) +
+  geom_node_arc() +
+  geom_node_text()
+```
+
+`loop_depth` (default `0.5`) says how far the loop folds toward the centre:
+`0` would not fold at all, `1` would reach it. A narrow node gets a shallow
+loop automatically, so several self-loops on a crowded ring do not pile into
+the middle.
+
 ## What ggcircos does not do yet
 
-- Self-loops (`from == to`) are dropped with a message.
+- Self-loops (`from == to`) are drawn only with `self_loops = TRUE`; by
+  default they are dropped with a message.
 - No label collision avoidance; rotate labels or shorten them.
 - No track type beyond `col`, `bar`, `area`, `boxplot`, `violin`, `density`,
   `point`, `tile`, `text`.

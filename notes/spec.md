@@ -32,7 +32,8 @@
 - **不做** 交互（`plotly`/`ggiraph`）；只保证 `ggplotly()` 不因本包报错。
 - **不做** 多半径节点（每个节点只有一条弧）。
 - **不做** 一图多环（一棵树上挂多个 circos）；一张图一个 layout。
-- **不做** 自环（`from == to`）的绘制：默认丢弃并 `cli_inform()` 提示；`self_loops = FALSE` 可关掉提示。
+- **自环（`from == to`）**：`self_loops = FALSE`（默认）时丢弃并 `cli_inform()` 提示；
+  `self_loops = TRUE` 时画成**向内折的小回环**（§4.7，v0.2）。
 - **不做** 自动轴范围推断：轴必须显式给 `limits`（§6.5）。
 - **不做** ggplot2 3.x 兼容（§1.4）。
 
@@ -218,7 +219,8 @@ structure(
 6. **槽位分配**：对每个节点，**每一侧**（`from` 端 / `to` 端）的入射边按 `(对方节点 order, edge_id)` 排序，各自等分节点弧。
    该侧槽位宽 `slot_w = p * node_w / 该侧边数`，**槽位之间留 `(1 - p) * node_w / 该侧边数` 的空隙**，
    ribbon 的脚只覆盖槽位本身（完整契约见 §4.6）。`from` 与 `to` 两端**独立**分配（各自用自己的边数做分母）。
-7. **自环**：`from == to` 的边在 `self_loops = FALSE` 时丢弃，并 `cli_inform()` 一次（消息里给条数）。
+7. **自环**：`from == to` 的边在 `self_loops = FALSE` 时丢弃，并 `cli_inform()` 一次（消息里给条数）；
+   `self_loops = TRUE` 时画成向内折的小回环，几何见 §4.7。
 8. **轨道带**：`tracks = c(values = .2, heat = .1)` →
    `r0 = 1 + track_offset + 累计(width) + 累计(track_offset)`，`r1 = r0 + width`；`track_offset` 默认 **0.06**，可在 `ggcircos()` 里覆盖。**不变量**：第一个带必须落在节点环之外——`geom_node_arc()` 默认占 `r ∈ [1, 1.04]`（`offset = 0`，环脚与飘带齐平，B34），故 `track_offset ≥ 0.04`（旧默认 0.02 让第一轨从 1.02 起，直接盖住节点环；灰色轨道叠灰色环，肉眼看不出来）。
    **⚠ 决策（B2）**：0 条链接（空 `data.frame`）是**合法输入**——节点表仍按 §4.4 建立，
@@ -292,6 +294,52 @@ structure(
 
 **⚠ 决策**：`tbl_graph` / `igraph` 走 `Suggests`；缺包时报
 `ggcircos_error_dependency: "Input is a <class>; install the '<pkg>' package or supply a data.frame."`
+
+### 4.7 自环：向内折的小回环（v0.2）
+
+`from == to` 的边没有两个不同的节点可连，普通 chord 会退化成一条零长度线。
+circlize 的做法是**向内折**：从节点弧上的一个 slot 出发，朝圆心走一小段，再折回来。
+形状像一个向内凹陷的舌状环，不占用别的节点的角，也不穿过圆心。
+
+契约：
+
+1. **占一个 slot，成对**。自环的 `from` 端与 `to` 端是同一个节点，`allocate_slots()` 会
+   在它的 `from` 侧和 `to` 侧各给一个 slot（各自按该侧边数等分，现有逻辑不变）。
+   两者的中点就是回环的两个"脚"；通常相邻，但不强求。
+2. **折到带宽内的深度**。回环的最低点半径 `r_loop = r_node * (1 - h)`，`h` 是这个 slot
+   的角宽相对于**整个节点弧**的比例，再乘一个系数 `loop_depth`（默认 `0.5`）：
+   `h = loop_depth * slot_span / node_width`。**目的**：节点弧越窄，slot 越窄，回环越浅，
+   不会因为一个窄节点上的自环而捅到圆心把别的弦挡死。
+   `loop_depth` 是 `ggcircos()` 的参数，取值 `(0, 1]`，超出报 `ggcircos_error_layout`。
+3. **形状是二次 Bezier 的向内折**，不是另一个圆弧。两端点在 `r_node` 上，
+   控制点在内侧半径 `r_loop` 处、角度取两端的**中点**，于是曲线向圆心凹。
+   用同一个 `chord_bezier(..., w = -1)`（`w < 0` 让 `h2` 反号，曲线朝内），
+   这样它和普通 chord 是同一套几何，只是方向相反。
+4. **列契约不变**：自环的行同样带 `theta/theta_end/theta0/theta1/…` 与 `x/y/xend/yend`，
+   `from == to == 该节点 id`。新增一列 `self_loop`（logical），供 `geom_chord()` 分支。
+5. **`n_links` 不含自环**（§4.2 已如此），因为自环不是"入射边"；但 `allocate_slots()` 的
+   两侧分母**要算自环**，否则它的 slot 宽度会被算成整条弧，盖住所有正经链接。
+   这是唯一一处需要同时"计入分母、不计入 n_links"的地方，加测试钉住。
+6. **剖面（ribbon）与线（line）都要能画**：`geom_chord(type = "ribbon")` 画内折的带，
+   `type = "line"` 画内折的曲线。二者曲线中心线相同，只是 ribbon 在两侧各偏移半个 slot 宽。
+
+**为什么向内折而不是绕满整弧**（spec §17-1 的决策，2026-10-22 定）：
+整段弧会把一个自环画成和自己重合的整圈，和节点本身混在一起，读不出来是"链接"；
+向内折保持"一条边"的读法，且与 circlize 的 `circos.link(sector.index, sector.index)`
+视觉一致，用户在从 circlize 迁移时不会感到陌生。
+
+**矩阵输入不含自环**：`circos_layout.matrix()` 取 `upper.tri`，对角线永远在内三角之外，
+所以 `cor(x)` 这类矩阵**不会**产生自环行——即使 `self_loops = TRUE`。要画自环必须用
+`from`/`to` 表（或 `nodes` + 显式 links）。这是有意的：相关矩阵的对角线是 1，不是一条链接。
+
+**回归测试**：
+- 自环行存在且 `self_loop == TRUE`，`from == to`；
+- 回环最低点半径 `< r_node` 且 `> 0`（没穿圆心，也确实折了）；
+- 节点弧窄时回环更浅（`h` 随 `slot_span / node_width` 单调）；
+- `self_loops = FALSE` 仍然丢弃并 `cli_inform()`；
+- `n_links` 不含自环，但两邻边的 slot 宽度按"含自环"的边数等分。
+
+---
 
 ### 4.5 错误
 
@@ -1163,7 +1211,9 @@ Config/testthat/edition: 3
 
 ## 17. 开放问题（不阻塞 M1）
 
-1. **自环**怎么画：小回环（r 向内折）还是整段弧？v0.1 丢弃，收集需求后再定。
+1. **自环**怎么画：**已定**（2026-10-22），画成**向内折的小回环**，契约见 §4.7（B43）。
+   选向内折而不是整段弧的理由：整弧会把自环画成与自己重合的一圈，和节点本身混在一起；
+   向内折保持"一条边"的读法，且与 circlize 的 `circos_link(sector, sector)` 视觉一致。
 2. **多半径节点**（同一个节点挂多层弧）：超出 v0.1，但 layout 列留了 `r`，以后可扩展。
 3. **`direction = -1`**（逆时针）是否与 `clockwise = FALSE` 重复：**已定**，只留 `clockwise`（§5.1）。
 4. **标签避让**：是否内建 `ggrepel` 支持（`geom_node_text_repel()`）。v0.1 不做。

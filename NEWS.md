@@ -27,6 +27,8 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   equal arc and every link an equal share, as before.
 * `layout_nodes()`, `layout_links()`, `layout_sectors()`, `layout_tracks()`,
   `layout_params()` export the layout as plain data frames.
+* `self_loops = TRUE` draws `from == to` links as small loops folded toward the
+  centre, instead of dropping them; `loop_depth` sets how deep they fold.
 * `facet_wrap()` splits chords per panel while the node ring is shared.
 
 ## Rendering
@@ -105,8 +107,7 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
 
 ## Not yet
 
-Self-loops, an angular axis, interactive output. See
-`vignette("from-circlize")`.
+An angular axis, interactive output. See `vignette("from-circlize")`.
 
 ## Deprecated shims
 

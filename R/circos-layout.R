@@ -28,8 +28,13 @@
 #'   `NULL` (the default) keeps the seam at the `1 - slot_fill` fraction, which
 #'   shrinks with the node's arc; a fixed value keeps the ribbons visibly
 #'   separate on a wide ring with many links.
-#' @param self_loops Keep self-links (`from == to`). v0.1 cannot draw them,
-#'   so they are dropped with a message.
+#' @param self_loops Draw self-links (`from == to`) as small loops folded
+#'   toward the centre (spec §4.7). `FALSE` (the default) drops them with a
+#'   message.
+#' @param loop_depth How far a self-loop folds toward the centre, as a
+#'   fraction of the node's radius at most: the depth is
+#'   `loop_depth * slot_span / node_width` of the radius, so a narrow node
+#'   gets a shallow loop. In `(0, 1]`. Ignored when `self_loops = FALSE`.
 #' @param tracks Named numeric vector of outer track widths, e.g.
 #'   `c(values = 0.2, heat = 0.1)`. Widths are relative to the unit node ring.
 #' @param track_offset Gap between the node ring, and between tracks. The
@@ -68,6 +73,7 @@ circos_layout <- function(x,
                           slot_fill = 0.9,
                           slot_gap = NULL,
                           self_loops = FALSE,
+                          loop_depth = 0.5,
                           tracks = NULL,
                           track_offset = 0.06,
                           radius = 1,
@@ -293,6 +299,7 @@ circos_layout_build <- function(links,
                                 slot_fill = 0.9,
                                 slot_gap = NULL,
                                 self_loops = FALSE,
+                                loop_depth = 0.5,
                                 tracks = NULL,
                                 track_offset = 0.06,
                                 radius = 1,
@@ -309,6 +316,10 @@ circos_layout_build <- function(links,
     if (anyNA(slot_fill) || !is.numeric(slot_fill) || length(slot_fill) != 1L ||
         slot_fill <= 0 || slot_fill > 1) {
         ggcircos_abort("layout", "{.arg slot_fill} must be a single number in (0, 1].")
+    }
+    if (anyNA(loop_depth) || !is.numeric(loop_depth) || length(loop_depth) != 1L ||
+        loop_depth <= 0 || loop_depth > 1) {
+        ggcircos_abort("layout", "{.arg loop_depth} must be a single number in (0, 1].")
     }
 
     links <- as.data.frame(links, stringsAsFactors = FALSE)
@@ -327,18 +338,16 @@ circos_layout_build <- function(links,
     }
 
     loop <- links$from == links$to
-    if (any(loop)) {
-        if (isTRUE(self_loops)) {
-            ggcircos_abort(
-                "data",
-                "{sum(loop)} self-link{?s} found, but {.arg self_loops = TRUE} is not supported in 0.1.0."
-            )
-        }
+    if (any(loop) && !isTRUE(self_loops)) {
         links <- links[!loop, , drop = FALSE]
         cli::cli_inform(c(
-            "i" = "Dropped {sum(loop)} self-link{?s} ({.arg from == to}); ggcircos 0.1.0 does not draw them."
+            "i" = "Dropped {sum(loop)} self-link{?s} ({.arg from == to}); use {.arg self_loops = TRUE} to draw them."
         ))
+        loop <- links$from == links$to
     }
+    # kept for both cases: every later step needs a plain logical column, and
+    # when the loops were dropped it is simply all FALSE
+    links$self_loop <- loop
 
     nd <- circos_nodes_table(nodes, node_defaults, node_ids)
     unknown <- setdiff(unique(c(links$from, links$to)), nd$id)
@@ -441,11 +450,27 @@ circos_layout_build <- function(links,
 
     sectors_df <- circos_sectors_table(nd)
 
-    links <- allocate_slots(links, nd, slot_fill, slot_gap)
+    links <- allocate_slots(links, nd, slot_fill, slot_gap,
+                            loop_depth = loop_depth)
+    # `n_links` counts *incident links*, and a self-loop is not an entry into
+    # its own node (spec §4.2, §4.7-5): counting it twice would make a node
+    # look busier than it is. The slot allocator still sees both of its
+    # endpoint rows -- that is deliberate, so the loop takes its share of the
+    # arc instead of overlapping the real links.
+    real <- links[!links$self_loop, , drop = FALSE]
     nd$n_links <- tabulate(
-        match(c(links$from, links$to), nd$id),
+        match(c(real$from, real$to), nd$id),
         nbins = n
     )
+
+    # The self-loop geometry needs the node's arc width and how deep to fold
+    # (spec §4.7); the layout is the only place that knows both. Dotted so they
+    # read as internals, not part of the public link contract (§4.2) -- the
+    # accessor returns them, but nothing promises them.
+    links$.circos_node_width <- nd$width[match(links$from, nd$id)]
+    # rep() so the zero-link case (a legal input, B2) does not try to put a
+    # length-1 value into a 0-row frame
+    links$.circos_loop_depth <- rep(loop_depth, nrow(links))
 
     tracks_df <- circos_track_bands(tracks, track_offset, radius)
     check_layout_invariants(nd, links, g, sg)
@@ -755,7 +780,8 @@ resolve_link_weights <- function(links, weight) {
 
 #' @keywords internal
 #' @noRd
-allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL) {
+allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
+                           loop_depth = 0.5) {
     n <- nrow(nodes)
     if (nrow(links) == 0L) {
         links$edge_id <- integer(0)

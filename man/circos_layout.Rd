@@ -20,6 +20,7 @@ circos_layout(
   slot_fill = 0.9,
   slot_gap = NULL,
   self_loops = FALSE,
+  loop_depth = 0.5,
   tracks = NULL,
   track_offset = 0.06,
   radius = 1,
@@ -70,8 +71,14 @@ node, the way \code{circlize::chordDiagram()}'s \code{diffHeight} is a fixed hei
 shrinks with the node's arc; a fixed value keeps the ribbons visibly
 separate on a wide ring with many links.}
 
-\item{self_loops}{Keep self-links (\code{from == to}). v0.1 cannot draw them,
-so they are dropped with a message.}
+\item{self_loops}{Draw self-links (\code{from == to}) as small loops folded
+toward the centre (spec §4.7). \code{FALSE} (the default) drops them with a
+message.}
+
+\item{loop_depth}{How far a self-loop folds toward the centre, as a
+fraction of the node's radius at most: the depth is
+\code{loop_depth * slot_span / node_width} of the radius, so a narrow node
+gets a shallow loop. In \verb{(0, 1]}. Ignored when \code{self_loops = FALSE}.}
 
 \item{tracks}{Named numeric vector of outer track widths, e.g.
 \code{c(values = 0.2, heat = 0.1)}. Widths are relative to the unit node ring.}

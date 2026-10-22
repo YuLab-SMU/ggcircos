@@ -1,0 +1,58 @@
+# R CMD check on the versions this package supports (spec §1.4, §14.5):
+# ggplot2 >= 4.0 only, on the current R release and the previous one.
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+name: R-CMD-check
+
+jobs:
+  R-CMD-check:
+    runs-on: ubuntu-latest
+    name: ${{ matrix.config.r }} / ggplot2 ${{ matrix.config.ggplot2 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { r: 'release' }
+          - { r: 'oldrel-1' }
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      # Pin ggplot2 to the 4.0 line: the package is built on coord_radial()
+      # and does not support 3.x (spec §1.4). Installing it explicitly after
+      # the general dependency resolve makes the matrix row mean what it says.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Pin ggplot2 to 4.0.x
+        run: |
+          remotes::install_version(
+            "ggplot2", version = "4.0.3",
+            repos = c(CRAN = "https://cloud.r-project.org"),
+            upgrade = "never"
+          )
+        shell: Rscript {0}
+
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          # no pdflatex on the runner is fine: the manual is not the thing under
+          # test (AGENTS.md records the same local behaviour)
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"warning"'
+          upload-snapshots: true
