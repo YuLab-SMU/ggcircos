@@ -362,27 +362,45 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
             }
         }
         band <- track_band(params$band_name, params$band, layout_node_table(lays[[1]]))
-        object$data <- track_angles(
-            data = object$data, node = params$node, layout = NULL,
-            width = params$width %||% 0.9, geom = params$geom_name,
-            has_value = "x" %in% names(object$mapping),
-            layouts = lays, group = key
-        )
+        # `slot =` (spec §4.10): rows sit on their own link's slot. The B-plan
+        # links live in the plot's stacked table, keyed by (group, edge_id).
+        if (!is.null(params$slot)) {
+            object$data <- track_align_slots(
+                data = object$data, slot = params$slot,
+                links = plot$data, group_key = key,
+                layouts = lays
+            )
+        } else {
+            object$data <- track_angles(
+                data = object$data, node = params$node, layout = NULL,
+                width = params$width %||% 0.9, geom = params$geom_name,
+                has_value = "x" %in% names(object$mapping),
+                layouts = lays, group = key
+            )
+        }
     } else {
         lay <- require_layout(plot, object_name)
         band <- track_band(params$band_name, params$band, layout_node_table(lay))
-        object$data <- track_angles(
-            data = object$data,
-            node = params$node,
-            layout = lay,
-            width = params$width %||% 0.9,
-            geom = params$geom_name,
-            # a user mapping `aes(x = )` supplies the values: without saying so,
-            # the placeholder column would shadow the mapping and every value
-            # would scale to the same radius (the R4 failure, reached this time
-            # through an external position)
-            has_value = "x" %in% names(object$mapping)
-        )
+        if (!is.null(params$slot)) {
+            object$data <- track_align_slots(
+                data = object$data, slot = params$slot,
+                links = lay$links, group_key = NULL,
+                layouts = list(lay)
+            )
+        } else {
+            object$data <- track_angles(
+                data = object$data,
+                node = params$node,
+                layout = lay,
+                width = params$width %||% 0.9,
+                geom = params$geom_name,
+                # a user mapping `aes(x = )` supplies the values: without saying so,
+                # the placeholder column would shadow the mapping and every value
+                # would scale to the same radius (the R4 failure, reached this time
+                # through an external position)
+                has_value = "x" %in% names(object$mapping)
+            )
+        }
     }
     spec <- track_geom_spec(params$geom_name)
     object$mapping <- merge_mapping(

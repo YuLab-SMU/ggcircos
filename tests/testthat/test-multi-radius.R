@@ -73,7 +73,10 @@ test_that("the panel reaches the outermost arc", {
                         from_r = c(1, 1.6), to_r = c(1, 1.6),
                         stringsAsFactors = FALSE)
     p <- ggcircos(links, nodes = nodes) + geom_chord() + geom_node_arc()
-    lim <- ggplot2::layer_scales(p)$x$limits
+    # the upper limit is data-driven now (`limits = c(0, NA)`), so the panel's
+    # trained range is what must clear the outermost arc
+    b <- ggplot2::ggplot_build(p)
+    lim <- b$layout$panel_params[[1]]$r.range
     expect_gt(lim[2], 1.6)
 })
 

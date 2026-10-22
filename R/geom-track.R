@@ -37,6 +37,11 @@
 #' @param width Fraction of a node's arc covered by the layer.
 #' @param offset Distance from the band's inner edge. Only meaningful when
 #'   `band` is an explicit interval.
+#' @param slot Optional: a column of the track data holding the **link row
+#'   number** (`edge_id`) each row belongs to. Given it, the row occupies the
+#'   arc that its link's slot occupies -- a track drawn per link sits exactly
+#'   on the link's foot, the way circlize's per-link annotation rectangles do
+#'   (spec §4.10). Without it, a node's rows split its arc evenly.
 #' @param position A [position_track()] object. `NULL` (the default) builds
 #'   one from this layer's `band`/`stack`/`scales`/`limits`/`node` arguments;
 #'   pass an existing one to reuse the same normalisation across layers (see
@@ -100,6 +105,7 @@ geom_track <- function(mapping = NULL,
                        width = 0.9,
                        offset = 0,
                        position = NULL,
+                       slot = NULL,
                        na.rm = FALSE,
                        show.legend = NA,
                        inherit.aes = FALSE) {
@@ -224,7 +230,9 @@ geom_track <- function(mapping = NULL,
              # what the values were normalised against, so a later
              # geom_track_axis() can label the band without being told twice
              scales = position$scales, limits = position$limits,
-             baseline = position$baseline)
+             baseline = position$baseline,
+             slot = if (!rlang::quo_is_null(rlang::enquo(slot)))
+               column_or_string(rlang::enquo(slot), "slot") else NULL)
     )
 }
 
@@ -376,6 +384,79 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
     theta <- nt$theta[idx]
     track_finish_angles(data, key = idx, theta = theta, arc = arc,
                         width = width, aggregate = aggregate, has_value = has_value)
+}
+
+#' Place track rows onto their own link's slots (spec §4.10)
+#'
+#' `slot =` names a column of the track data holding the link row number
+#' (`edge_id`) each row belongs to. The row then occupies the arc that its
+#' link's slot occupies, so a per-link track sits exactly on the link's foot --
+#' the thing circlize's ch.16 methylation rectangles do by accumulating
+#' `x1 - value1` by hand.
+#' @keywords internal
+#' @noRd
+track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NULL) {
+    data <- as.data.frame(data, stringsAsFactors = FALSE)
+    if (!slot %in% names(data)) {
+        ggcircos_abort(
+            "data",
+            c("The track data has no {.field {slot}} column.",
+              i = "It names the link each row belongs to, e.g. {.code slot = edge_id}.")
+        )
+    }
+    eid <- as.integer(data[[slot]])
+    if (anyNA(eid) || any(eid < 1L)) {
+        ggcircos_abort(
+            "data",
+            "The {.field {slot}} column must hold positive link row numbers ({.field edge_id})."
+        )
+    }
+    # a B-plan link table carries one row per (group, link); the (group,
+    # edge_id) pair picks the right panel's slot
+    if (!is.null(group_key) && !group_key %in% names(data)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "The track data has no {.field {group_key}} column, so its rows cannot be \
+                 matched to a ring.",
+                i = "Add the same column the {.arg by = } layout uses."
+            )
+        )
+    }
+    # build the lookup: (group, edge_id) -> theta0, theta1, arc, radius-of-endpoint
+    lk_key <- if (!is.null(group_key)) paste(links[[group_key]], links$edge_id, sep = "\r") else as.character(links$edge_id)
+    my_key <- if (!is.null(group_key)) paste(data[[group_key]], eid, sep = "\r") else as.character(eid)
+    hit <- match(my_key, lk_key)
+    if (anyNA(hit)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "Some track rows name a link that is not in the layout.",
+                i = "{.field {slot}} must be the {.field edge_id} of a link the plot carries."
+            )
+        )
+    }
+    theta0 <- links$theta0[hit]
+    theta1 <- links$theta1[hit]
+    arc <- (theta1 - theta0) %% (2 * pi)
+    theta <- wrap_2pi(theta0 + arc / 2)
+    r_link <- links$x[hit]
+
+    out <- data
+    # the row's arc IS the link's slot: theta is the centre, ymin/ymax the two
+    # slot edges. Mapping them like the rect geoms expect means no geometry
+    # change at all.
+    out$y <- theta
+    out$.circos_theta <- theta
+    out$.circos_arc <- arc
+    out$ymin <- theta0
+    out$ymax <- theta1
+    out$.circos_half <- arc / 2
+    # the slot sits at the link endpoint's radius: the position leaves x alone
+    # for a band_fill-like row (it fills the slot radially)
+    out$.circos_slot_r <- r_link
+    if (!"x" %in% names(out) && !isTRUE(out$.circos_has_value)) out$x <- 0
+    out
 }
 
 #' Add y / ymin / ymax once theta and arc are known per row

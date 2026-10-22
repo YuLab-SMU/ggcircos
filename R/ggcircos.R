@@ -1,6 +1,11 @@
-# Space reserved outside the outermost band for labels. The sector label
-# carries the largest offset (0.16), so 0.22 leaves a readable margin.
-label_space <- 0.22
+# Breathing room added *beyond whatever the layers draw*, in radius units.
+#
+# This used to be 0.22, "enough for the labels", and it was added to a fixed
+# upper limit -- so a plot with no layers outside the ring (or none at all)
+# sat in the middle of an empty margin. The radius scale now grows to fit the
+# data (labels carry their own offset in `x`); this only keeps a hairline of
+# room so content never touches the panel edge.
+label_space <- 0.06
 
 #' Start a circular layout
 #'
@@ -117,13 +122,13 @@ ggcircos <- function(data,
     # outermost arc, or it is drawn on the edge
     if (nrow(lay$nodes)) rmax <- max(rmax, max(lay$nodes$r))
     if (nrow(lay$tracks)) rmax <- max(rmax, max(lay$tracks$r1))
-    # room outside the outermost band for the node and sector labels: without
-    # it the labels are pinned to the panel edge (plain chord) or buried under
-    # the first track (whose inner edge is r = 1 + track_offset)
+    # The inner edge is fixed (the circle starts at the centre; the linear
+    # layout also needs room to the left for chords that bulge outwards). The
+    # outer edge is left to the data: labels, tracks and multi-radius arcs each
+    # draw at their own radius, and a hard-coded upper limit either clipped
+    # them or -- worse -- reserved a margin nothing used.
     xmax <- rmax + label_space
-    # in the linear layout links bulge left of the spine, so the radius axis
-    # has to reach into negative values too
-    xlim <- if (layout == "arc") c(-1.1, xmax) else c(0, xmax)
+    xlim <- if (layout == "arc") c(-1.1, NA) else c(0, NA)
 
     # No plot-level mapping: x/y/xend/yend belong to the chord layer alone
     # (geom_chord maps them itself), and hanging them here made every standard
@@ -139,7 +144,7 @@ ggcircos <- function(data,
         # Track values may exceed the *radial* plot limits before their
         # position maps them into a band. Squishing here destroys the values
         # before PositionTrack sees them (notably aes(x = value)).
-        scale_x_continuous(limits = xlim, expand = c(0, 0),
+        scale_x_continuous(limits = xlim, expand = ggplot2::expansion(add = label_space),
                            oob = scales::oob_keep) +
         theme_circos()
 
@@ -201,7 +206,7 @@ ggcircos_by <- function(data, nodes, by, layout, start, tracks, track_offset,
     p <- ggplot(data = structure(links, circos_layouts = lays)) +
         scale_y_continuous(limits = c(0, 2 * pi), expand = c(0, 0),
                            oob = scales::squish) +
-        scale_x_continuous(limits = xlim, expand = c(0, 0),
+        scale_x_continuous(limits = xlim, expand = ggplot2::expansion(add = label_space),
                            oob = scales::oob_keep) +
         theme_circos()
     # attach the stacked node/sector tables so the node geoms (which take no

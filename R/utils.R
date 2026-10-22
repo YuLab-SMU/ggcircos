@@ -119,8 +119,12 @@ column_or_string <- function(quo, arg) {
     expr <- rlang::quo_get_expr(quo)
     if (is.character(expr) && length(expr) == 1L) return(expr)
     # `node = params$node` (internal) and `node = col` where `col` is a string
-    # both resolve here; a symbol with nothing behind it is a column name
+    # both resolve here; a symbol with nothing behind it is a column name --
+    # including one that only exists in the layer's data (edge_id, say), which
+    # is why the lookup failure is swallowed rather than fatal
     val <- tryCatch(rlang::eval_tidy(quo), error = function(e) NULL)
+    if (is.character(val) && length(val) == 1L) return(val)
+    val <- tryCatch(rlang::eval_tidy(quo, data = list()), error = function(e) NULL)
     if (is.character(val) && length(val) == 1L) return(val)
     column_name(quo, arg)
 }

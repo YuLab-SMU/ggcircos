@@ -56,7 +56,7 @@ coord_circos <- function(theta = "y",
                          start = -pi / 2,
                          clip = "off",
                          r.axis = FALSE,
-                         expand = FALSE,
+                         expand = c(FALSE, TRUE, FALSE, FALSE),
                          limits = NULL,
                          direction = NULL,
                          ...) {

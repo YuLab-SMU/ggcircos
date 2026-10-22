@@ -19,6 +19,7 @@ geom_track(
   width = 0.9,
   offset = 0,
   position = NULL,
+  slot = NULL,
   na.rm = FALSE,
   show.legend = NA,
   inherit.aes = FALSE
@@ -71,6 +72,12 @@ one from this layer's \code{band}/\code{stack}/\code{scales}/\code{limits}/\code
 pass an existing one to reuse the same normalisation across layers (see
 the escape hatch under \code{\link[=position_track]{position_track()}}). When given, those settings
 come from the position, not from this call.}
+
+\item{slot}{Optional: a column of the track data holding the \strong{link row
+number} (\code{edge_id}) each row belongs to. Given it, the row occupies the
+arc that its link's slot occupies -- a track drawn per link sits exactly
+on the link's foot, the way circlize's per-link annotation rectangles do
+(spec §4.10). Without it, a node's rows split its arc evenly.}
 }
 \value{
 A ggplot2 layer.

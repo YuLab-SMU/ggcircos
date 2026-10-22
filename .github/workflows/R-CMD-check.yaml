@@ -11,7 +11,7 @@ name: R-CMD-check
 jobs:
   R-CMD-check:
     runs-on: ubuntu-latest
-    name: ${{ matrix.config.r }} / ggplot2 ${{ matrix.config.ggplot2 }}
+    name: R ${{ matrix.config.r }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,13 +40,16 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
-      - name: Pin ggplot2 to 4.0.x
+      # The package needs ggplot2 >= 4.0 (spec §1.4: it is built on
+      # coord_radial()). CRAN's ggplot2 is on the 4.0 line already, so there is
+      # nothing to pin -- but assert the floor rather than trust it, and fail
+      # loudly if a future setup-r-dependencies resolves below it.
+      - name: Assert the ggplot2 floor
         run: |
-          remotes::install_version(
-            "ggplot2", version = "4.0.3",
-            repos = c(CRAN = "https://cloud.r-project.org"),
-            upgrade = "never"
-          )
+          stopifnot(getRversion() >= "4.0.0")
+          v <- packageVersion("ggplot2")
+          message("ggplot2 ", v)
+          if (v < "4.0.0") stop("ggplot2 >= 4.0.0 is required, got ", v)
         shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2
