@@ -87,7 +87,7 @@ geom_track_axis <- function(mapping = NULL,
 #' A track axis is a *radial ruler* standing at one angle (the first node's
 #' boundary, which is empty gap). Each break gets a short radial tick stub at
 #' its own radius, and the label sits at that same radius reading
-#' **tangentially** — the way circlize draws axis labels. Labels at one shared
+#' **tangentially** -- the way circlize draws axis labels. Labels at one shared
 #' angle can only stay apart if the radius carries the value and the text
 #' runs across the radius, not along it.
 #'

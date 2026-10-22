@@ -56,7 +56,7 @@ A ggplot2 coordinate.
 }
 \description{
 \code{coord_circos()} draws the panel in polar coordinates: \code{x} is the radius,
-\code{y} is the angle in radians. \code{coord_arc()} is the linear counterpart —
+\code{y} is the angle in radians. \code{coord_arc()} is the linear counterpart --
 nodes sit on a line and links bulge to one side. \code{ggcircos()} installs
 the right one for you; you rarely need to call these directly.
 }

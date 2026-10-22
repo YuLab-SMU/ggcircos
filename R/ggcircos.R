@@ -5,7 +5,7 @@ label_space <- 0.22
 #' Start a circular layout
 #'
 #' Creates the plot that every other ggcircos layer attaches to. The layout
-#' — node arcs, sectors and the angular slot reserved for each link — is
+#' -- node arcs, sectors and the angular slot reserved for each link -- is
 #' computed once, here, and stored as data; it is never modified afterwards.
 #' `ggcircos()` itself adds no layer, so you can draw links, node arcs,
 #' labels and outer tracks in any order.
@@ -17,7 +17,7 @@ label_space <- 0.22
 #' @param layout `"circular"` for the polar layout, `"arc"` for the linear
 #'   one, where links bulge to the left of a vertical spine.
 #' @param by Name of a **node-table** column to lay out one ring per group of
-#'   its values (spec §9.1, the facet "B-plan"). Each panel gets its own node
+#'   its values (spec sec.9.1, the facet "B-plan"). Each panel gets its own node
 #'   subset and its own ordering; finish with `facet_wrap(~ <the same column>)`.
 #'   A link whose two ends fall in different groups is dropped with a message,
 #'   since it belongs to no single ring. `NULL` (the default) builds one shared
@@ -113,6 +113,9 @@ ggcircos <- function(data,
     )
 
     rmax <- radius
+    # a node may sit at several radii (spec sec.4.9); the panel has to reach the
+    # outermost arc, or it is drawn on the edge
+    if (nrow(lay$nodes)) rmax <- max(rmax, max(lay$nodes$r))
     if (nrow(lay$tracks)) rmax <- max(rmax, max(lay$tracks$r1))
     # room outside the outermost band for the node and sector labels: without
     # it the labels are pinned to the panel edge (plain chord) or buried under
@@ -145,11 +148,11 @@ ggcircos <- function(data,
     } else {
         # `start` is where theta = 0 sits on the ring, so the coordinate has
         # to be told about it: the layout put the first node there, and the
-        # screen angles (spec §5.4) are measured from the same origin
+        # screen angles (spec sec.5.4) are measured from the same origin
         p + coord_circos(start = start)
     }
 }
-#' Build a faceted plot, one ring per group (spec §9.1, B-plan)
+#' Build a faceted plot, one ring per group (spec sec.9.1, B-plan)
 #'
 #' The single-layout `ggcircos()` path hands one `circos_layout` to the plot's
 #' data; every geom reads that one table. The B-plan instead lays out each
@@ -189,6 +192,9 @@ ggcircos_by <- function(data, nodes, by, layout, start, tracks, track_offset,
     rmax <- radius
     tr <- stack(layout_tracks)
     if (nrow(tr)) rmax <- max(rmax, max(tr$r1))
+    # the stacked node table is already in hand, and a node may sit at
+    # several radii (spec sec.4.9): the panel has to reach the outermost arc
+    if (nrow(nodes_all)) rmax <- max(rmax, max(nodes_all$r))
     xmax <- rmax + label_space
     xlim <- if (layout == "arc") c(-1.1, xmax) else c(0, xmax)
 

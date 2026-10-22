@@ -12,7 +12,7 @@
 #     `StatTrackBox` exists to avoid;
 #   * the angular offset has to be written into `y` *by the stat*, because
 #     `position_track()` only ever sees aesthetics, and a stat's extra columns
-#     are not aesthetics (spec §6.4, B41).
+#     are not aesthetics (spec sec.6.4, B41).
 #
 # So the stats do the KDE and build the angles; the position keeps owning the
 # radius, exactly as it does for `"col"`.

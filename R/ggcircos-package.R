@@ -1,7 +1,7 @@
 #' Circular layouts, chord diagrams and tracks for ggplot2
 #'
-#' The layout of a circular plot — node arcs, sectors and the angular slot
-#' reserved for every link — is computed once by [circos_layout()] and kept
+#' The layout of a circular plot -- node arcs, sectors and the angular slot
+#' reserved for every link -- is computed once by [circos_layout()] and kept
 #' as data. Layers then behave like any other ggplot2 layer: they read the
 #' layout and add their own data, and nothing accumulates on the plot.
 #'

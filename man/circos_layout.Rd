@@ -73,7 +73,7 @@ shrinks with the node's arc; a fixed value keeps the ribbons visibly
 separate on a wide ring with many links.}
 
 \item{self_loops}{Draw self-links (\code{from == to}) as small loops folded
-toward the centre (spec §4.7). \code{FALSE} (the default) drops them with a
+toward the centre (spec sec.4.7). \code{FALSE} (the default) drops them with a
 message.}
 
 \item{loop_depth}{How far a self-loop folds toward the centre, as a
@@ -99,7 +99,7 @@ default, gives every node an equal arc and every link an equal share of
 it -- the value then only shows through \code{aes(fill = )}.}
 
 \item{by}{Name of a \strong{node-table} column to lay out one ring per group of
-its values (spec §9.1). Returns a \code{circos_layouts} list, each element a
+its values (spec sec.9.1). Returns a \code{circos_layouts} list, each element a
 full layout with a \code{panel} attribute; a link belongs to the group named in
 its own column of the same name, or -- without one -- to the group of its
 two ends (a link spanning groups is dropped). \code{NULL} builds one layout.}

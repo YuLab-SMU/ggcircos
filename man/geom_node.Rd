@@ -79,7 +79,7 @@ A ggplot2 layer.
 }
 \description{
 Layers for the node ring itself: the arc, a label, a point. They read the
-node table of the plot's layout and only ever add their own data — the
+node table of the plot's layout and only ever add their own data -- the
 layout stays read-only.
 }
 \section{Label placement}{
@@ -87,7 +87,7 @@ layout stays read-only.
 \code{rotate = FALSE} keeps labels horizontal and flips \code{hjust} on the left half
 of the circle. \code{rotate = TRUE} rotates them, flipping both the angle and
 \code{hjust} on the left half. \code{geom_node_text()} does not take an \code{angle}
-aesthetic — use \code{rotate}, so the two can never disagree.
+aesthetic -- use \code{rotate}, so the two can never disagree.
 }
 
 \examples{

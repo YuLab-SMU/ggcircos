@@ -231,6 +231,40 @@ ggcircos(links, nodes = nodes, self_loops = TRUE) +
 loop automatically, so several self-loops on a crowded ring do not pile into
 the middle.
 
+## One node, several radii
+
+Sometimes the same entity belongs on the ring more than once -- a protein in
+two interaction networks, a feature present in two assemblies. The `nodes`
+table may list an id several times, once per radius, and the `r` column says
+which. The layers are stacked above one another on the same place of the ring,
+and each keeps its own links.
+
+```{r multi-radius, fig.width = 5.5, fig.height = 5.5, fig.cap = "One node id at two radii: the inner ring and the outer ring are the same node, with their own links."}
+nodes <- data.frame(
+  id = c("a", "a", "b", "b", "c", "c"),
+  r = c(1, 1.45, 1, 1.45, 1, 1.45),
+  stringsAsFactors = FALSE
+)
+links <- data.frame(
+  from = c("a", "a", "b", "b", "c"),
+  to = c("b", "b", "c", "c", "a"),
+  from_r = c(1, 1.45, 1, 1.45, 1),
+  to_r = c(1, 1.45, 1, 1.45, 1.45),
+  stringsAsFactors = FALSE
+)
+ggcircos(links, nodes = nodes) +
+  geom_chord(aes(fill = from_r), alpha = 0.3) +
+  geom_node_arc()
+```
+
+The inner and the outer ring are the same three nodes, one layer each: the
+layers share their place on the ring and stack outwards, and each keeps its
+own links. The chords are drawn translucent here so both layers stay visible.
+
+A link says which layer it lives on with `from_r` / `to_r`. A link whose end
+does not name a radius is an error when the node has several layers -- the
+package lists the radii rather than picking one.
+
 ## What ggcircos does not do yet
 
 - Self-loops (`from == to`) are drawn only with `self_loops = TRUE`; by

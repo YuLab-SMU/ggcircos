@@ -1,7 +1,7 @@
 #' Circular and arc-like coordinates
 #'
 #' `coord_circos()` draws the panel in polar coordinates: `x` is the radius,
-#' `y` is the angle in radians. `coord_arc()` is the linear counterpart —
+#' `y` is the angle in radians. `coord_arc()` is the linear counterpart --
 #' nodes sit on a line and links bulge to one side. `ggcircos()` installs
 #' the right one for you; you rarely need to call these directly.
 #'
@@ -105,9 +105,9 @@ coord_circos <- function(theta = "y",
         # a reversed arc needs the radius scale read outwards in the same
         # order; CoordRadial warns about r.axis placement otherwise
         r_axis_inside = TRUE,
-        # We compute label rotation ourselves (spec §5.4, `screen_angle()`),
+        # We compute label rotation ourselves (spec sec.5.4, `screen_angle()`),
         # and `rotate_angle = TRUE` would have ggplot2's `transform` apply its
-        # own `flip_data_text_angle()` on top — which doubled the rotation and
+        # own `flip_data_text_angle()` on top -- which doubled the rotation and
         # turned `rotate = TRUE` into "horizontal" and vice versa.
         rotate_angle = FALSE
     )
@@ -178,7 +178,7 @@ CoordCircos <- ggproto("CoordCircos", CoordRadial,
     # Screen angle in degrees for a vector of layout angles, in the same
     # frame the coordinate draws them: 12 o'clock is 0, positive clockwise.
     #
-    # This is the only sanctioned source of label rotation (spec §5.4).
+    # This is the only sanctioned source of label rotation (spec sec.5.4).
     # Deriving it back from transformed coordinates (atan2) silently breaks
     # when the angle scale is replaced, when `expand` is non-zero, or when
     # the panel is not square; the panel parameters are what the transform

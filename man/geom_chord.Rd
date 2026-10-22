@@ -32,7 +32,7 @@ geom_chord(
 \item{type}{\code{"ribbon"} (filled area) or \code{"line"} (single curve).}
 
 \item{curvature}{\code{"auto"} derives the bulge from how far apart the two
-slots are — opposite slots reach the centre. A number overrides it:
+slots are -- opposite slots reach the centre. A number overrides it:
 \code{1} always bulges to the centre.}
 
 \item{ncp}{Number of points sampled along each curve.}
@@ -54,7 +54,7 @@ curve from one slot to the other.
 \details{
 The default \code{data} is the layout's link table, in which the coordinates are
 already computed. To style a \emph{subset} of the links, pass data plus the
-two endpoint columns — either as arguments (\verb{from = , to = }) or through
+two endpoint columns -- either as arguments (\verb{from = , to = }) or through
 the mapping (\code{aes(from = , to = )}).
 }
 \section{Geometry}{

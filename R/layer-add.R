@@ -144,7 +144,7 @@ sector_defaults <- function(offset) {
 #'
 #' ggproto objects are environments, so `pos$field <- value` mutates the
 #' object the caller passed in and the next layer inherits one layer's data
-#' snapshot (spec §8.2). `rlang::env_clone()` copies an environment without
+#' snapshot (spec sec.8.2). `rlang::env_clone()` copies an environment without
 #' disturbing its class or its `super` binding, which is what ggproto method
 #' dispatch walks.
 #' @keywords internal
@@ -250,7 +250,7 @@ chord_coordinates <- function(data = NULL) {
         "theta0", "theta1", "theta_end0", "theta_end1"
     )
     # the self-loop geometry needs to know a row is a loop and how deep to fold
-    # (spec §4.7). Only map those when the frame has them: a caller passing a
+    # (spec sec.4.7). Only map those when the frame has them: a caller passing a
     # bare from/to table has no such columns, and mapping them would make
     # ggplot2 look for columns that are not there.
     extra <- c("self_loop", ".circos_node_width", ".circos_loop_depth")
@@ -400,7 +400,7 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     }
     # A position handed in by the caller is theirs: copy it before storing
     # anything, or a layer silently rewrites an object the next layer -- or
-    # the caller -- still holds (spec §8.2, §6.4). ggproto objects are
+    # the caller -- still holds (spec sec.8.2, sec.6.4). ggproto objects are
     # environments, so `$<-` on the original would mutate it in place.
     pos <- object$position
     if (inherits(pos, "PositionTrack")) {
@@ -422,7 +422,7 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
         pos$node_angles <- object$data$y
     }
     # the resolved numeric band lives on the copy too; a position that already
-    # carried one keeps its own (spec §6.4)
+    # carried one keeps its own (spec sec.6.4)
     if (is.null(pos$band)) pos$band <- band
     object$position <- pos
     re_add(drop_geometry_params(object), plot, object_name)

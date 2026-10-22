@@ -8,7 +8,7 @@
 #'
 #' The default `data` is the layout's link table, in which the coordinates are
 #' already computed. To style a *subset* of the links, pass data plus the
-#' two endpoint columns — either as arguments (`from = , to = `) or through
+#' two endpoint columns -- either as arguments (`from = , to = `) or through
 #' the mapping (`aes(from = , to = )`).
 #'
 #' @param mapping,data,stat,position,show.legend,inherit.aes,na.rm,...
@@ -17,7 +17,7 @@
 #'   `data` is supplied; otherwise the layout's link table is used as is.
 #' @param type `"ribbon"` (filled area) or `"line"` (single curve).
 #' @param curvature `"auto"` derives the bulge from how far apart the two
-#'   slots are — opposite slots reach the centre. A number overrides it:
+#'   slots are -- opposite slots reach the centre. A number overrides it:
 #'   `1` always bulges to the centre.
 #' @param ncp Number of points sampled along each curve.
 #' @param alpha,linewidth Line width / ribbon opacity defaults.
@@ -61,7 +61,7 @@ geom_chord <- function(mapping = NULL,
     # alpha to the layer makes ggplot2 warn about an empty aesthetic
     alpha <- alpha %||% if (type == "ribbon") 0.5 else 0.9
     linewidth <- linewidth %||% if (type == "ribbon") 0.1 else 0.3
-    # A ribbon has no outline by default (spec §6.1; circlize's
+    # A ribbon has no outline by default (spec sec.6.1; circlize's
     # `link.border = NA`). The old default drew a black hairline around every
     # ribbon, which reads as a grey wireframe over the whole figure.
     dots <- list(...)
@@ -237,7 +237,7 @@ style_key <- function(colour) {
 #'
 #' The algorithm is a straight port: a **quadratic Bezier in the plane**
 #' between the two feet, split into two edges for a ribbon and closed with
-#' the two arcs. It is *not* a polar curve — the curve lives in Cartesian
+#' the two arcs. It is *not* a polar curve -- the curve lives in Cartesian
 #' space and is only then handed to `coord_circos()`, which is why it stays
 #' a smooth band instead of collapsing toward the centre.
 #'
@@ -450,7 +450,7 @@ self_loop_ribbon <- function(a0, a1, b0, b1, node_width = 1, loop_depth = 0.5,
 #'
 #' A self-link has no second node to travel to, so the usual Bezier degenerates
 #' to a point. circlize draws it as a small loop that dips toward the centre
-#' instead (spec §4.7): the two feet sit on the node's own arc, and the curve
+#' instead (spec sec.4.7): the two feet sit on the node's own arc, and the curve
 #' bulges *inward*, so the link reads as one edge folded back on itself rather
 #' than a full second turn around the ring.
 #'
@@ -510,7 +510,7 @@ chord_paths_polar <- function(data, type, curvature, ncp) {
         for (i in seq_len(nrow(data))) {
             if (isTRUE(data$self_loop[i])) {
                 # a self-loop is one folded band, not a ribbon between two feet
-                # (spec §4.7): draw the centre loop and thicken it by half a
+                # (spec sec.4.7): draw the centre loop and thicken it by half a
                 # slot on each side, in the plane, so the two offsets stay
                 # parallel the way a ribbon's edges do
                 out[[length(out) + 1L]] <- chord_outline_to_polar(

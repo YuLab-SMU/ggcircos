@@ -4,7 +4,7 @@
 #' and a legend on the right. Layer on top of it with `+ theme()` as usual.
 #'
 #' @param bgcolor Panel background colour. The panel is *painted*, not left
-#'   transparent, so that `bgcolor = "white"` really is white — `theme_void()`
+#'   transparent, so that `bgcolor = "white"` really is white -- `theme_void()`
 #'   blanks the elements, it does not fill them.
 #' @param grid Keep the panel grid? With a circular coordinate these are the
 #'   polar elements `panel.grid.*.theta` / `panel.grid.*.r`, not cartesian
@@ -30,7 +30,7 @@ theme_circos <- function(bgcolor = "white",
         plot.background = element_rect(fill = bgcolor, colour = NA),
         plot.margin = margin(margin, margin, margin, margin)
     )
-    # ggplot2 has no `panel.grid.*.theta` / `.r` element in its hierarchy —
+    # ggplot2 has no `panel.grid.*.theta` / `.r` element in its hierarchy --
     # the radial coordinate builds those lines itself in `render_bg()`, and
     # they are null because the scales have no breaks. So there is nothing
     # to blank: only the cartesian names are, so that a coordinate swap

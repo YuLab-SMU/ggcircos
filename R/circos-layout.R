@@ -29,7 +29,7 @@
 #'   shrinks with the node's arc; a fixed value keeps the ribbons visibly
 #'   separate on a wide ring with many links.
 #' @param self_loops Draw self-links (`from == to`) as small loops folded
-#'   toward the centre (spec §4.7). `FALSE` (the default) drops them with a
+#'   toward the centre (spec sec.4.7). `FALSE` (the default) drops them with a
 #'   message.
 #' @param loop_depth How far a self-loop folds toward the centre, as a
 #'   fraction of the node's radius at most: the depth is
@@ -53,7 +53,7 @@
 #' @param radius Base radius of the node ring. `0` puts the ring on the
 #'   spine of a linear (`coord_arc()`) layout.
 #' @param by Name of a **node-table** column to lay out one ring per group of
-#'   its values (spec §9.1). Returns a `circos_layouts` list, each element a
+#'   its values (spec sec.9.1). Returns a `circos_layouts` list, each element a
 #'   full layout with a `panel` attribute; a link belongs to the group named in
 #'   its own column of the same name, or -- without one -- to the group of its
 #'   two ends (a link spanning groups is dropped). `NULL` builds one layout.
@@ -102,7 +102,7 @@ circos_layout <- function(x,
     UseMethod("circos_layout")
 }
 
-#' Build one layout per group (the facet B-plan, spec §9.1)
+#' Build one layout per group (the facet B-plan, spec sec.9.1)
 #'
 #' `by` names a column of the *node table*: it decides which nodes belong to
 #' which panel, not which links. Each group is laid out on its own -- its own
@@ -146,6 +146,23 @@ circos_layout_by <- function(x, by, nodes = NULL, sectors = NULL, order = NULL,
         if (anyNA(link_grp)) {
             ggcircos_abort("data", "The link table's {.field {by}} column has missing values.")
         }
+        # The link says which ring it belongs to; but its ends have to be *in*
+        # that ring, or the ring has no node for one of them and the layout
+        # cannot place the link. Such a link is dropped, like one that spans
+        # two rings.
+        members <- lapply(keys, function(k) as.character(nt$id[as.character(nt[[by]]) == k]))
+        names(members) <- keys
+        fits <- vapply(seq_len(nrow(links)), function(i) {
+            k <- link_grp[i]
+            k %in% names(members) &&
+                links$from[i] %in% members[[k]] && links$to[i] %in% members[[k]]
+        }, logical(1))
+        if (any(!fits)) {
+            cli::cli_inform(c(
+                "i" = "Dropped {sum(!fits)} link{?s} whose ends are not both in their own {.field {by}} group."
+            ))
+            link_grp[!fits] <- NA_character_
+        }
     } else {
         # No link-level group: infer from the endpoints. A node id may repeat
         # across groups, so the id -> group lookup keeps the FIRST group that
@@ -167,6 +184,8 @@ circos_layout_by <- function(x, by, nodes = NULL, sectors = NULL, order = NULL,
     out <- lapply(keys, function(k) {
         keep <- !is.na(link_grp) & link_grp == k
         node_rows <- as.character(nt[[by]]) == k
+        # a link that belongs to no ring is not passed on: its endpoints are
+        # not in any node table, and the layout would refuse it
         lay <- circos_layout(
             links[keep, , drop = FALSE],
             nodes = nt[node_rows, , drop = FALSE],
@@ -484,6 +503,8 @@ circos_layout_build <- function(links,
     links$self_loop <- loop
 
     nd <- circos_nodes_table(nodes, node_defaults, node_ids)
+    # the arcs the node table asks for: one row per (id, r) (spec sec.4.9)
+    arcs <- circos_arc_table(nodes, node_ids, radius)
     unknown <- setdiff(unique(c(links$from, links$to)), nd$id)
     if (length(unknown) > 0) {
         ggcircos_abort(
@@ -528,7 +549,7 @@ circos_layout_build <- function(links,
     # the gap budget is a *fraction of a turn* spent per seam; with many
     # nodes a literal default swallows the whole circle. Both gaps are
     # clamped to a fifth of the turn overall, so a batch of matrices of any
-    # size still yields a readable ring out of the box (spec §4.3-4).
+    # size still yields a readable ring out of the box (spec sec.4.3-4).
     gap_eff <- min(gap, 0.2 / n)
     sector_gap_eff <- min(sector_gap, 0.2 / max(n_seams, 1L))
     g <- gap_eff * 2 * pi
@@ -580,37 +601,61 @@ circos_layout_build <- function(links,
     nd$theta <- wrap_2pi(nd$theta0 + w / 2)
     nd$width <- w
     nd$order <- seq_len(n)
-    nd$r <- radius
 
     sectors_df <- circos_sectors_table(nd)
 
-    links <- allocate_slots(links, nd, slot_fill, slot_gap,
+    # Expand the id geometry onto the arcs: the layers of one node are
+    # radially aligned, so they share the angles and differ only in radius
+    # (spec sec.4.9-2). The per-arc user columns override the id-level ones, so
+    # two layers may carry different labels.
+    # the arcs follow their id's place on the ring: the node table's row order
+    # *is* the ring order, so an arc table still in the user's order would
+    # undo `order =` (and the gap budget with it)
+    arc_idx <- match(arcs$id, nd$id)
+    # `base::order` explicitly: this function has a parameter called `order`,
+    # which shadows the base one (and a caller's order *function* would be
+    # invoked instead)
+    ord <- base::order(arc_idx, method = "radix")
+    arcs <- arcs[ord, , drop = FALSE]
+    arc_nd <- nd[arc_idx[ord], , drop = FALSE]
+    arc_nd$r <- arcs$r
+    for (nm in setdiff(names(arcs), c("id", "r"))) arc_nd[[nm]] <- arcs[[nm]]
+    rownames(arc_nd) <- NULL
+
+    # every link endpoint names an arc (spec sec.4.9-4)
+    links$.circos_from_arc <- resolve_endpoint_arc(links, arc_nd, "from")
+    links$.circos_to_arc <- resolve_endpoint_arc(links, arc_nd, "to")
+
+    links <- allocate_slots(links, arc_nd, slot_fill, slot_gap,
                             loop_depth = loop_depth)
     # `n_links` counts *incident links*, and a self-loop is not an entry into
-    # its own node (spec §4.2, §4.7-5): counting it twice would make a node
+    # its own node (spec sec.4.2, sec.4.7-5): counting it twice would make a node
     # look busier than it is. The slot allocator still sees both of its
     # endpoint rows -- that is deliberate, so the loop takes its share of the
     # arc instead of overlapping the real links.
     real <- links[!links$self_loop, , drop = FALSE]
-    nd$n_links <- tabulate(
-        match(c(real$from, real$to), nd$id),
-        nbins = n
-    )
+    # a 0-row frame has no columns, so the endpoint indices are NULL rather
+    # than an empty vector -- and tabulate(NULL) errors
+    ends <- c(real$.circos_from_arc, real$.circos_to_arc)
+    ends <- if (is.null(ends)) integer(0) else ends
+    arc_nd$n_links <- tabulate(ends, nbins = nrow(arc_nd))
 
     # The self-loop geometry needs the node's arc width and how deep to fold
-    # (spec §4.7); the layout is the only place that knows both. Dotted so they
-    # read as internals, not part of the public link contract (§4.2) -- the
+    # (spec sec.4.7); the layout is the only place that knows both. Dotted so they
+    # read as internals, not part of the public link contract (sec.4.2) -- the
     # accessor returns them, but nothing promises them.
-    links$.circos_node_width <- nd$width[match(links$from, nd$id)]
+    links$.circos_node_width <- arc_nd$width[links$.circos_from_arc]
     # rep() so the zero-link case (a legal input, B2) does not try to put a
     # length-1 value into a 0-row frame
     links$.circos_loop_depth <- rep(loop_depth, nrow(links))
 
     tracks_df <- circos_track_bands(tracks, track_offset, radius)
+    # the invariants are about the *ring*: the arcs of one id coincide by
+    # design (spec sec.4.9-2), so they are checked on the id table
     check_layout_invariants(nd, links, g, sg)
     links$slot_span <- NULL
 
-    nd_out <- nd[, c(
+    nd_out <- arc_nd[, c(
         "id", "label", "sector", "order", "n_links",
         "theta0", "theta1", "theta", "width", "r",
         setdiff(names(nd), c(
@@ -630,7 +675,7 @@ circos_layout_build <- function(links,
             params = list(
                 gap = gap, sector_gap = sector_gap, slot_fill = slot_fill,
                 start = start, track_offset = track_offset, radius = radius,
-                # the *effective* values after the budget clamp of §4.3-4:
+                # the *effective* values after the budget clamp of sec.4.3-4:
                 # what the ring actually uses, not what was asked for
                 gap_eff = gap_eff, sector_gap_eff = sector_gap_eff
             )
@@ -641,6 +686,76 @@ circos_layout_build <- function(links,
 
 #' @keywords internal
 #' @noRd
+#' The arcs a node table asks for: one row per (id, r)
+#'
+#' A node may occupy several radii (spec sec.4.9): the node table lists it once
+#' per radius and the `r` column says which. Without an `r` column there is
+#' one arc per node, at the layout's radius.
+#' @keywords internal
+#' @noRd
+circos_arc_table <- function(nodes, node_ids, radius = 1) {
+    if (is.null(nodes)) {
+        return(data.frame(
+            id = as.character(node_ids),
+            r = rep(radius, length(node_ids)),
+            stringsAsFactors = FALSE
+        ))
+    }
+    probe <- as.data.frame(nodes, stringsAsFactors = FALSE)
+    id_col <- "id"
+    if (!"id" %in% names(probe)) {
+        if ("name" %in% names(probe)) {
+            id_col <- "name"
+        } else if ("label" %in% names(probe)) {
+            id_col <- "label"
+        } else {
+            ggcircos_abort(
+                "node",
+                "The {.arg nodes} table needs an {.field id} column (or {.field label} / {.field name} to use as id)."
+            )
+        }
+    }
+    ids <- as.character(probe[[id_col]])
+    r <- rep(radius, nrow(probe))
+    if ("r" %in% names(probe)) {
+        r <- suppressWarnings(as.numeric(probe[["r"]]))
+        if (anyNA(r) || any(!is.finite(r)) || any(r <= 0)) {
+            ggcircos_abort(
+                "node",
+                c(
+                    "The node table's {.field r} column must hold positive, finite radii.",
+                    i = "It says at which radius each row's arc sits (spec sec.4.9)."
+                )
+            )
+        }
+    }
+    # an arc's identity is (id, r): the same node may sit at several radii,
+    # but not twice at the same one. The comparison is numeric -- a string key
+    # built with format() spells 1 as "1" and 1.0 as "1.0", so the same radius
+    # would fail to match itself.
+    dup <- which(duplicated(ids) & duplicated(r, incomparables = FALSE))
+    if (length(dup)) {
+        key <- paste(ids, r)
+        dup <- key[duplicated(key)]
+    }
+    if (length(dup)) {
+        ggcircos_abort(
+            "node",
+            c(
+                "The node table lists the same node at the same radius twice.",
+                i = "An arc's identity is {.code (id, r)} (spec sec.4.9); give each row its own radius."
+            )
+        )
+    }
+    out <- data.frame(id = ids, r = r, stringsAsFactors = FALSE)
+    # the remaining columns belong to the *arc*, so two layers of one node may
+    # carry different labels. A `label` that was used as the id is not a label.
+    skip <- c(id_col, "r")
+    if (id_col == "label") skip <- c(skip, "label")
+    for (nm in setdiff(names(probe), skip)) out[[nm]] <- probe[[nm]]
+    out
+}
+
 circos_nodes_table <- function(nodes, node_defaults, node_ids) {
     # an explicit `nodes` table is authoritative: link endpoints that it does
     # not list are an error the caller needs to see, not a silent new node
@@ -702,10 +817,10 @@ circos_nodes_table <- function(nodes, node_defaults, node_ids) {
         nd <- merge(nd, tbl, by = "id", all.x = TRUE, sort = FALSE)
         nd$label[is.na(nd$label)] <- nd$id[is.na(nd$label)]
     }
-    if (anyDuplicated(nd$id)) {
-        ggcircos_abort("node", "The {.arg nodes} table has duplicated ids.")
-    }
-    nd
+    # A node may be listed several times (once per radius, spec sec.4.9); the
+    # *id* table keeps the first row of each, and the arc table carries the
+    # layers. Duplicates at the same radius are rejected there.
+    nd[!duplicated(nd$id), , drop = FALSE]
 }
 
 #' @keywords internal
@@ -814,7 +929,7 @@ circos_sectors_table <- function(nd) {
         d <- nd[nd$sector == s, , drop = FALSE]
         # a sector is a *run* of adjacent node arcs, so its span is found by
         # walking the ring in the node order rather than by min()/max() of
-        # the angles — the latter puts a sector that straddles theta = 0 on
+        # the angles -- the latter puts a sector that straddles theta = 0 on
         # the wrong side of the circle (B1)
         sp <- sector_span(d$theta0, d$theta1, d$order)
         data.frame(
@@ -912,6 +1027,68 @@ resolve_link_weights <- function(links, weight) {
     abs(as.numeric(v))
 }
 
+#' Which arc does a link endpoint sit on?
+#'
+#' An endpoint names a node id; when that node has several arcs (radii) the
+#' link must say which one -- through the `from_r` / `to_r` column. An
+#' endpoint with a single arc implies it; an ambiguous one is an error that
+#' lists the radii, rather than a guess (spec sec.4.9-4).
+#' @keywords internal
+#' @noRd
+resolve_endpoint_arc <- function(links, arcs, side) {
+    ids <- as.character(links[[side]])
+    r_col <- paste0(side, "_r")
+    rows <- seq_len(nrow(links))
+    if (!nrow(arcs) || !length(rows)) return(integer(0))
+    if (r_col %in% names(links)) {
+        want <- suppressWarnings(as.numeric(links[[r_col]]))
+        if (anyNA(want)) {
+            ggcircos_abort(
+                "data",
+                c(
+                    "The link table's {.field {r_col}} column has missing values.",
+                    i = "Give every link the radius of the arc its {.field {side}} endpoint sits on."
+                )
+            )
+        }
+        # numeric match: a string key would spell 1 as "1" and 1.0 as "1.0"
+        hit <- mapply(function(id, rr) {
+            j <- which(arcs$id == id & arcs$r == rr)
+            if (length(j)) j[1] else NA_integer_
+        }, ids, want, USE.NAMES = FALSE)
+        if (anyNA(hit)) {
+            bad <- rows[is.na(hit)]
+            ggcircos_abort(
+                "node",
+                c(
+                    "Some links name an {.field {side}_r} that no arc of {.field {ids[bad]}} has.",
+                    i = "Radii available for {.field {ids[bad]}}: {.val {unique(arcs$r[arcs$id == ids[bad]])}}."
+                ),
+                ids = ids[bad][1]
+            )
+        }
+        return(hit)
+    }
+    # no radius given: the id must have exactly one arc
+    n_arcs <- table(arcs$id)
+    counts <- n_arcs[ids]
+    counts[is.na(counts)] <- 0L
+    if (any(counts != 1L)) {
+        bad <- unique(ids[counts != 1L])
+        ggcircos_abort(
+            "node",
+            c(
+                "The link endpoint{?s} {.field {ids[bad]}} {?has/have} several arcs, so the \
+                 link must say which radius it uses.",
+                i = "Add a {.field {r_col}} column to the link table.",
+                i = "Radii for {.field {ids[bad]}}: {.val {unique(unlist(lapply(arcs$r[arcs$id %in% bad], function(z) z)))}}."
+            ),
+            ids = bad[1]
+        )
+    }
+    match(ids, arcs$id)
+}
+
 #' @keywords internal
 #' @noRd
 allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
@@ -932,19 +1109,23 @@ allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
         data.frame(
             row = seq_len(nrow(links)), edge_id = links$edge_id,
             node = links$from, partner = links$to, side = "from",
+            arc = links$.circos_from_arc, partner_arc = links$.circos_to_arc,
             stringsAsFactors = FALSE
         ),
         data.frame(
             row = seq_len(nrow(links)), edge_id = links$edge_id,
             node = links$to, partner = links$from, side = "to",
+            arc = links$.circos_to_arc, partner_arc = links$.circos_from_arc,
             stringsAsFactors = FALSE
         )
     )
-    ep$node_order <- match(ep$node, nodes$id)
-    ep$partner_order <- match(ep$partner, nodes$id)
+    # the slot group is the *arc* (id + radius), so two layers of one node
+    # divide their shared span independently (spec sec.4.9-3)
+    ep$node_order <- ep$arc
+    ep$partner_order <- ep$partner_arc
     ep <- ep[order(ep$node_order, ep$side, ep$partner_order, ep$edge_id), , drop = FALSE]
 
-    # Slots are allocated *per side* (spec §4.6): a node's arc is split among
+    # Slots are allocated *per side* (spec sec.4.6): a node's arc is split among
     # the links on that side only, so 3 outgoing and 1 incoming edge use
     # thirds on the from side and the whole arc on the to side. Dividing by
     # the node's total degree instead leaves the spare capacity unused.
@@ -993,9 +1174,9 @@ allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
     links$theta_end0 <- to_tab$s0
     links$theta_end1 <- to_tab$s1
     links$theta_end <- to_tab$mid
-    links$x <- nodes$r[match(links$from, nodes$id)]
+    links$x <- nodes$r[links$.circos_from_arc]
     links$y <- links$theta
-    links$xend <- nodes$r[match(links$to, nodes$id)]
+    links$xend <- nodes$r[links$.circos_to_arc]
     links$yend <- links$theta_end
     links$slot_span <- (from_tab$s1 - from_tab$s0) %% (2 * pi)
     links

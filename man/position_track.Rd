@@ -40,13 +40,13 @@ A ggplot2 position.
 \description{
 Applies the normalisation described in \code{\link[=geom_track]{geom_track()}}. ggplot2 runs a
 position \emph{after} the stat and the geom setup, so the layer must already
-carry \code{y} — \code{\link[=track_angles]{track_angles()}} adds it.
+carry \code{y} -- \code{\link[=track_angles]{track_angles()}} adds it.
 }
 \details{
 The position holds plain vectors only (\code{band}, the normalisation
-settings, the node column name) — never a layout or a node table, so one
+settings, the node column name) -- never a layout or a node table, so one
 position object can be shared by several layers without them seeing each
-other's data (spec §8.2).
+other's data (spec sec.8.2).
 }
 \examples{
 # the escape hatch: reuse the normalisation on any geom

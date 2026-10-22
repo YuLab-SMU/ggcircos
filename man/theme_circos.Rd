@@ -14,7 +14,7 @@ theme_circos(
 }
 \arguments{
 \item{bgcolor}{Panel background colour. The panel is \emph{painted}, not left
-transparent, so that \code{bgcolor = "white"} really is white — \code{theme_void()}
+transparent, so that \code{bgcolor = "white"} really is white -- \code{theme_void()}
 blanks the elements, it does not fill them.}
 
 \item{grid}{Keep the panel grid? With a circular coordinate these are the

@@ -1,7 +1,7 @@
 #' Node layers
 #'
 #' Layers for the node ring itself: the arc, a label, a point. They read the
-#' node table of the plot's layout and only ever add their own data — the
+#' node table of the plot's layout and only ever add their own data -- the
 #' layout stays read-only.
 #'
 #' @param mapping,data,stat,position,show.legend,inherit.aes,na.rm,...
@@ -27,7 +27,7 @@
 #' `rotate = FALSE` keeps labels horizontal and flips `hjust` on the left half
 #' of the circle. `rotate = TRUE` rotates them, flipping both the angle and
 #' `hjust` on the left half. `geom_node_text()` does not take an `angle`
-#' aesthetic — use `rotate`, so the two can never disagree.
+#' aesthetic -- use `rotate`, so the two can never disagree.
 #'
 #' @examples
 #' ggcircos(cor(mtcars), order = "hclust") +
@@ -220,7 +220,7 @@ repel_node_labels <- function(object, step = 0.055) {
 
 #' Label angle and justification from the coordinate
 #'
-#' The screen angle is asked of the coordinate (spec §5.4), never derived
+#' The screen angle is asked of the coordinate (spec sec.5.4), never derived
 #' back from transformed coordinates: the coordinate uses the same panel
 #' parameters as `transform()`, so the two cannot drift apart.
 #' @keywords internal

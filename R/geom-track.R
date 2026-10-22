@@ -118,7 +118,7 @@ geom_track <- function(mapping = NULL,
     # A stacked band accumulates one value per row up the band. An aggregating
     # geometry has already folded the rows into one mark per node by the time
     # the position runs, so stacking it would silently draw a single mark at
-    # the top of the band -- spec §6.4 rejects the combination instead.
+    # the top of the band -- spec sec.6.4 rejects the combination instead.
     if (isTRUE(stack) && isTRUE(spec$aggregate)) {
         ggcircos_abort(
             "data",
@@ -451,7 +451,7 @@ track_defaults <- function(rect, aggregate = FALSE) {
 #'
 #' Applies the normalisation described in [geom_track()]. ggplot2 runs a
 #' position *after* the stat and the geom setup, so the layer must already
-#' carry `y` — [track_angles()] adds it.
+#' carry `y` -- [track_angles()] adds it.
 #'
 #' @param band Track name or `c(r0, r1)` radius interval. A *name* can only
 #'   be resolved inside a `ggcircos()` plot (the layout declares the bands);
@@ -464,9 +464,9 @@ track_defaults <- function(rect, aggregate = FALSE) {
 #' @param geom_name Name of the track geometry.
 #'
 #' @details The position holds plain vectors only (`band`, the normalisation
-#' settings, the node column name) — never a layout or a node table, so one
+#' settings, the node column name) -- never a layout or a node table, so one
 #' position object can be shared by several layers without them seeing each
-#' other's data (spec §8.2).
+#' other's data (spec sec.8.2).
 #'
 #' @return A ggplot2 position.
 #' @examples
@@ -562,7 +562,7 @@ PositionTrack <- ggproto("PositionTrack", Position,
         # name for plain layers, and under the track's reserved aesthetic name
         # `node` for aggregating stats (which emit ids, not rows). Otherwise the
         # row is looked up by its angle, from the snapshot `ggplot_add()` took
-        # for the layers that never map `node` (spec §8.2: vectors only).
+        # for the layers that never map `node` (spec sec.8.2: vectors only).
         #
         # Looking up by angle alone is wrong once a stat has rewritten `y`: a
         # violin outline sits at theta +/- density, never at the node centre, so

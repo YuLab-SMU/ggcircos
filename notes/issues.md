@@ -934,6 +934,47 @@ B44 落地时把 `geom_track()` 在 `by =` 下明确拒了（"轨道需要每 pa
 theta（用 4 节点 vs 2 节点的两组，角度必然不同，错用另一张表就会露馅）、轨道数据缺分组列
 时报 classed error、轴在每个 panel 各画一份。
 
+### B46. 多半径节点：同一个节点挂多层弧 —— **已落地（2026-10-22）**
+
+spec §17-2 挂了很久："多半径节点超出 v0.1，但 layout 列留了 `r`，以后可扩展"。
+那个 `r` 列是**真的留了**——`node_defaults()` 画节点弧时用的就是 `.data$r`，
+所以绘制侧一直支持，只是 layout 侧把每个节点的 `r` 钉死成 1。
+
+**契约**（spec §4.9）：节点表里同一个 `id` 可以出现多次，每行一层弧，半径取该行的 `r`；
+同一 id 的各层**径向对齐**（共用 theta0/theta1/width），角度预算按 **id 个数**算；
+**槽位按弧**（每层独立划分那段共享弧）；链接用 `from_r`/`to_r` 指层，缺了且有歧义就报错。
+
+**实现上最关键的一点是把"id 表"和"弧表"分开**：
+
+- **id 表**（每 id 一行）负责几何——顺序、sector、间隙、弧宽。它是环的真相。
+- **弧表**（每 `(id, r)` 一行）负责绘制与槽位。它带着 id 表的几何，加上自己的 `r`。
+
+改动集中在 layout 内部，**几何层一行没改**（因为 `geom_node_arc()` 本来就按 `.data$r` 画）。
+
+**踩到的坑**（都是"看起来对、其实错"的类型）：
+
+1. **弧表按用户顺序排，覆盖了 `order =` 的结果**。节点表的行序**就是**环序，
+   弧表必须跟着 id 的环上位置排，否则 `order =` 和间隙预算一起失效。
+   ——表现为 `order = rev(ids)` 完全不起作用。
+2. **`order` 这个形参遮蔽了 `base::order`**。`circos_layout_build()` 有个叫 `order` 的参数，
+   于是 `order(arc_idx, method = "radix")` 调的是**用户传的排序函数**，
+   报 "unused argument (method = ...)"。要用 `base::order()` 显式调用。
+3. **字符串 key 匹配半径会失配**：`format(1, digits=15)` 得 `"1"`，`format(1.0, ...)` 得 `"1.0"`，
+   同一个半径匹配不上自己。`(id, r)` 的比较必须用数值。
+4. **0 行的 frame 没有列**。`real$.circos_from_arc` 在 0 行时是 `NULL` 而非空向量，
+   `tabulate(NULL)` 报 "bin must be numeric"；`mapply` 在 0 行输入时返回 `list` 而非整数向量。
+5. **`names(members) <- keys` 漏了一行**，于是 `members[[k]]` 取到 `NULL`，
+   端点检查全 FALSE，所有链接被静默丢弃。表现是"链接莫名其妙全没了"。
+
+**顺带修掉一个既有警告**：`R CMD check` 一直在报
+`checking code files for non-ASCII characters`——R 源码里有 39 个 `§` 和 16 个 em dash
+（注释与 cli 消息里的"spec §4.9"之类）。**`R CMD check --as-cran` 会因此报 warning**，
+包就不是 portable 了。已全部换成 ASCII（`sec.4.9`、`--`）。
+
+回归测试：`tests/testthat/test-multi-radius.R`（8 个 `test_that`）：两层径向对齐、
+角度预算按 id 计、链接的端点半径、歧义报错、同 id 同半径报错、画布装得下最外层、
+**单半径布局逐位不变**（兼容性底线）、以及 `by =` 与多半径叠加（节点身份是 `(组, id, r)`）。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

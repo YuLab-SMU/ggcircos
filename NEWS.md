@@ -27,6 +27,9 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   equal arc and every link an equal share, as before.
 * `layout_nodes()`, `layout_links()`, `layout_sectors()`, `layout_tracks()`,
   `layout_params()` export the layout as plain data frames.
+* A node may occupy **several radii**: list it once per radius in the `nodes`
+  table and the `r` column says which. The layers are radially aligned and
+  take their own slots; links name their layer with `from_r` / `to_r`.
 * `self_loops = TRUE` draws `from == to` links as small loops folded toward the
   centre, instead of dropping them; `loop_depth` sets how deep they fold.
 * `by =` lays out one ring **per group of a node-table column**, each with its

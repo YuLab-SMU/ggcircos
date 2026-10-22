@@ -167,7 +167,7 @@ circos_layouts_of <- function(plot) {
 #' Stacked tables for the B-plan, with the grouping column
 #'
 #' `ggcircos(by = )` lays each group out separately and stacks the tables here
-#' (spec §9.1). A layer that would read `lay$nodes` in the single-layout case
+#' (spec sec.9.1). A layer that would read `lay$nodes` in the single-layout case
 #' reads this instead; the extra column is what `facet_wrap()` splits on.
 #' @keywords internal
 #' @noRd
