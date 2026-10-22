@@ -38,20 +38,32 @@ geoms read the layout; they never recompute it.
 
 ### Many rings from one layout (`facet_wrap`)
 
-Four samples, one shared node ring, one legend. `facet_wrap()` on a link
-column splits the chords per panel — because the chords are just data
-rows.
+One `ggcircos()` call, one ring **per sample** — each with its own node
+set and its own layout. `by =` names the node column that says which
+ring a node belongs to; `facet_wrap()` on the same column splits them
+apart. (Without `by =`, `facet_wrap()` only splits the chords and every
+panel shares one ring.)
 
 ``` r
 set.seed(42)
 mk <- function(s) {
-  m <- matrix(runif(8 * 8), 8, 8); m <- (m + t(m)) / 2; diag(m) <- 0
-  d <- as.data.frame(as.table(m)); names(d) <- c("from", "to", "r")
-  d$sample <- s; d
+  # six nodes, a random weighted graph on them, tagged with the sample
+  ids <- paste0(s, letters[1:6])
+  m <- matrix(runif(36), 6, 6); m <- (m + t(m)) / 2; diag(m) <- 0
+  cells <- which(upper.tri(m) & m > 0.35, arr.ind = TRUE)
+  data.frame(
+    from = ids[cells[, 1]], to = ids[cells[, 2]],
+    r = m[cells], sample = s, stringsAsFactors = FALSE
+  )
 }
-links <- do.call(rbind, lapply(1:4, mk))
+links <- do.call(rbind, lapply(c("s1", "s2", "s3"), mk))
+nodes <- data.frame(
+  id = unlist(lapply(c("s1", "s2", "s3"), function(s) paste0(s, letters[1:6]))),
+  sample = rep(c("s1", "s2", "s3"), each = 6),
+  stringsAsFactors = FALSE
+)
 
-ggcircos(links, order = "hclust") +
+ggcircos(links, nodes = nodes, by = "sample", order = "hclust") +
   geom_chord(aes(fill = r)) +
   geom_node_arc() +
   geom_node_text() +
