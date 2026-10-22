@@ -387,6 +387,112 @@ Two details are worth keeping in mind:
   fill scale per plot, so a plot that colours both the chords and the
   tiles by different quantities has to pick one of them to colour.
 
+## Violins
+
+A violin is the tile track's opposite case. A tile puts one value on the
+band per bin; a violin puts a whole distribution there. With several
+samples per node, `geom = "violin"` turns the usual violin on its side: the
+value runs along the radius, and the density decides how much of the node's
+arc the outline takes at that value. Each node gets its own outline,
+centred on its arc and widest where its samples pile up.
+
+```{r violin-plot, fig.width = 6.5, fig.height = 6.5, fig.cap = "A violin track: 40 samples per node, the density spread along each node's arc and the value along the radius."}
+set.seed(1)
+samples <- data.frame(
+  id = rep(colnames(mtcars), each = 40),
+  value = rnorm(ncol(mtcars) * 40, 0.5, 0.1)
+)
+head(samples)
+
+p_violin <- ggcircos(
+  m,
+  order = "hclust",
+  tracks = c(dist = 0.3),
+  track_offset = 0.12
+) +
+  geom_chord(fill = "grey90") +
+  geom_track(
+    data = samples,
+    aes(x = value),
+    node = id,
+    geom = "violin",
+    band = "dist",
+    fill = "steelblue",
+    colour = NA,
+    alpha = 0.85
+  ) +
+  geom_node_arc() +
+  geom_node_text()
+p_violin
+```
+
+Three things behave differently from the other track geometries:
+
+* the radius is still the position's job, so `scales`, `limits` and
+  `baseline` apply exactly as they do to a column track: a violin is not a
+  band-filling geometry;
+* `n`, `adjust` and `trim` go to `stats::density()`: `n` is the number of
+  density points, `adjust` multiplies the bandwidth, and `trim = FALSE`
+  keeps the kernel's tails beyond the observed range;
+* the density is spread over each node's **whole** arc, the way a boxplot's
+  mark is, because the stat folds a node's rows into one mark. The bin
+  split that a `col` or `tile` track uses does not apply.
+
+A node needs at least three finite values with some spread to have a
+density; a node that has none is skipped, and a layer where no node
+qualifies warns instead of drawing an unexplained empty band.
+
+## Density curves
+
+`geom = "density"` draws the same density as the violin, but as an **open
+curve** instead of a closed outline. Each curve leaves its node's centre line
+and rises to that node's own mode, so the band reads as a ring of ridges.
+
+Everything else -- `n`, `adjust`, `trim`, and the radial normalisation through
+`scales`/`limits`/`baseline` -- behaves exactly as it does for the violin,
+because both run the same kernel. The two differ only in closing the outline
+or not, which is why this is a separate `geom` rather than a `fill = FALSE`
+switch.
+
+```{r density-plot, fig.width = 6.5, fig.height = 6.5, fig.cap = "A density track: one open ridge per node, the density spread along the arc and the value along the radius. Nothing is filled, so the chords underneath stay readable."}
+set.seed(3)
+wide <- data.frame(
+  id = rep(colnames(mtcars), each = 60),
+  value = rnorm(ncol(mtcars) * 60, 0.55, 0.16)
+)
+
+p_density <- ggcircos(m, order = "hclust", tracks = c(dist = 0.35)) +
+  geom_chord(fill = "grey92") +
+  geom_track(
+    data = wide,
+    aes(x = value),
+    node = id,
+    geom = "density",
+    band = "dist",
+    colour = "steelblue",
+    linewidth = 0.8
+  ) +
+  geom_node_arc() +
+  geom_node_text()
+p_density
+```
+
+Two behaviours are worth knowing:
+
+* the curve is **not closed**, so it has no `fill` worth setting; use
+  `"violin"` when you want the shape filled;
+* every curve is centred on its own node, so two subgroups of the *same* node
+  drawn as two curves would be interleaved rather than stacked. Split them
+  with `facet_wrap()` or give each its own band, the way you would with any
+  other track geometry;
+* a curve that runs past the angular seam is **split** there, not clipped.
+  A polygon clip returns a ring whose edges lie on the seam, which is
+  invisible for a fill but would draw a straight line along the seam for a
+  stroke -- so the curve is cut into pieces and continued on the other side.
+
+Both geometries need at least three finite values with some spread per node;
+a node that has none is skipped, and a layer where no node qualifies warns.
+
 ## What this does not do yet
 
 * **No self-loops.** A link with `from == to` cannot be drawn in 0.1.0.
@@ -396,9 +502,10 @@ Two details are worth keeping in mind:
 * **No label collision avoidance.** `geom_node_text()` puts one label on
   each node and nothing checks whether the labels fit. Short nodes next to
   each other produce overlapping text.
-* **No violin or density tracks.** The track geometries are `col`/`bar`,
-  `area`, `boxplot`, `point`, `tile` and `text`. A distribution drawn
-  along the arc is not available.
+* **No filled-and-outlined density.** `"violin"` fills the outline and
+  `"density"` strokes the open curve; there is no single geometry that draws
+  a closed shape with both a visible fill and a visible edge (map `colour =`
+  on `"violin"` for that).
 * **No axis on the angular direction.** `geom_track_axis()` is a radial
   ruler. There are no ticks along the ring and no angular axis, and the
   angular scale is fixed by the layout to `[0, 2 * pi]`.

@@ -29,16 +29,24 @@
 - README 的图必须与当前几何同源；几何一改就重渲染，别让 `man/figures/README-*.png`
   停在旧实现上（0.1.0 收尾时正是三张图还画着收腰的旧飘带）。
 
-## ggplot2 4.0 扩展的四个坑（每个都咬过一次，均有回归测试）
+## ggplot2 4.0 扩展的六个坑（每个都咬过一次，均有回归测试）
 
 1. **非美学列会被丢掉**。`data$kind` 这种自定列到不了 `draw_panel()`（ggplot2 只保留美学）。
    要带信息就用真美学名（`label`/`group`）或在 `mapping` 里显式 `aes()`。
+   **position 也一样只看美学**：stat 出的额外列（`violinwidth` 这类）到 `compute_panel()`
+   已经没了，想让 position 用就必须先映射成美学（B41 坑 2）。
 2. **`pathGrob` 默认 `fill` 是白色**。画线必须 `gpar(fill = NA)`，否则闭合路径会填出白色
    圆盘盖掉下面所有图层（B8：加轴整图变空）。
 3. **`pathGrob(id=)` 要数值**。字符 id 被静默忽略，整层连成一团。用
    `match(group, unique(group))`。
 4. **`CoordRadial$transform()` 在 `rotate_angle = TRUE` 时会自己翻文字角度**。我们自己算
    旋转（`CoordCircos$screen_angle()`，spec §5.4），所以必须 `rotate_angle = FALSE`（B15）。
+5. **`params$n` 会部分匹配 `params$na.rm`**。`Layer$compute_statistic()` 给 stat 的
+   `params` 里总有 `na.rm`，`$` 的部分匹配让 `params$n` 拿到 `FALSE`，带宽参数静默变
+   logical。stat 的 `setup_params` 里一律写 `params[["n"]]`（B41）。
+6. **y 轴的 `oob = squish` 在 stat 之前生效**。跨 `θ=0` 的节点 `ymin < 0`，到 stat 手里已被
+   夹成 0，`(ymax - ymin)` 于是算错。要在 stat 里用某个区间宽度，就另存一列并**映射成美学**
+   （轴只碰 `x`/`y`/`ymin`/`ymax`，不碰别的列），见 `.circos_half`（B41 坑 3）。
 
 ## 几何不变量（改任何一条，spec 与测试同时改）
 

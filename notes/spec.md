@@ -626,17 +626,23 @@ geom_track(
 | `"col"` / `"bar"` | 是 | `"identity"` | `GeomTrackBar`（继承 `GeomBar`，只覆写 `setup_data` 管 `width`） | 堆叠用 `stack = TRUE` |
 | `"area"` | 是 | `"identity"` | `GeomArea` | |
 | `"boxplot"` | 是 | `StatTrackBox`（本包） | `GeomCrossbar` | 分位数由 stat 算，不用 `stat_boxplot` |
+| `"violin"` | 是 | `StatTrackViolin`（本包） | `GeomTrackViolin` | 密度轮廓由 stat 算，不用 `stat_ydensity` |
+| `"density"` | 是 | `StatTrackDensity`（本包） | `GeomTrackDensity` | 不闭合的密度曲线（ridgeline），与 violin 同一份 KDE |
 | `"point"` | 否（缺省 = 带中心） | `"identity"` | `GeomPoint` | 标数值就写 `x` |
 | `"tile"` | 否 | `"identity"` | `GeomTrackTile` | 热图轨道：径向填满 band（`band_fill`） |
 | `"text"` | 否（缺省 = 带中心） | `"identity"` | `GeomText` | |
 
-**同节点的多行等分该节点弧（B37）**：除 `"boxplot"` 外，每个节点的第 `k` 行占
-`theta0 + (arc - bin_w·m)/2 + (k-1)·bin_w`，`bin_w = arc · width / m`（`m` 为该节点行数）。
-tile 靠它出热图，area/line 靠它出覆盖度剖面，col 靠它把同一节点的多次测量画成一排刷子。
-`boxplot` 例外，因为 `StatTrackBox` 先把多行聚合成一个标记，那个标记该占满整条弧。
+**同节点的多行等分该节点弧（B37）**：除**聚合型** geom（`"boxplot"`、`"violin"`、`"density"`）外，
+每个节点的第 `k` 行占 `theta0 + (arc - bin_w·m)/2 + (k-1)·bin_w`，`bin_w = arc · width / m`
+（`m` 为该节点行数）。tile 靠它出热图，area/line 靠它出覆盖度剖面，col 靠它把同一节点的多次测量
+画成一排刷子。聚合型 geom 例外，因为它们的 stat 先把多行折成**一个标记**，那个标记该占满整条弧。
 **每节点只有一行时 `bin_w = arc · width`，与以 `theta` 为中心逐位相同**，单值轨道不受影响。
 
-不在表里 → `ggcircos_error_data`（消息列出可用值）。`"violin"` v0.1 不支持（§17-7）。
+**聚合与否由 `track_geom_spec()` 的 `aggregate = TRUE` 声明，不靠 geom 名字逐个列举。**
+`track_angles()`（整弧 vs 切分）与 `ggplot_add` 的 `node` 补映射都读这一个标记。B41 的根因
+正是"按名字列举"：加 violin 时两处都要加，漏一处就静默出错。
+
+不在表里 → `ggcircos_error_data`（消息列出可用值）。
 `x` 必需而缺失时报：`"geom_track(geom = 'col') needs an x aesthetic; map the value column, e.g. aes(x = value)."`
 
 **为什么 `boxplot` 要自己的 stat**：数据里的 `y` 是节点 id（字符），而坐标系的 `y` 必须是弧度。
@@ -644,15 +650,72 @@ tile 靠它出热图，area/line 靠它出覆盖度剖面，col 靠它把同一�
 `StatTrackBox` 把"按 `node` 分组算分位数"和"`node` → `theta`"一次做完，输出
 `xmin`/`xlower`/`xmiddle`/`xupper`/`xmax` + `y = theta` + `width`，下游只是 `GeomCrossbar`。
 
+**为什么 `violin` 也要自己的 stat（B41）**：环里的 violin 是**横躺**的——值沿半径、
+密度决定该值处占据多少**弧**。`stat_ydensity`（`geom_violin` 用的那个）把密度放在 `x`（水平
+宽度）、值放在 `y`，正好差 90°；而且它要求离散的 `x` 做分组，会撞同一个 y 轴问题。所以：
+
+- `StatTrackViolin` 按 `node` 分组调 `stats::density()`，输出**闭合轮廓**的两段：
+  值 `x = c(at, rev(at))`、弧 `y = theta + c(w, rev(-w)) * half`，`half = arc * width / 2`，
+  `w` 归一化到 `[0, 1]`（每个节点自己的最大密度 = 满弧宽）。一个节点一个 `group`，
+  `GeomTrackViolin`（继承 `GeomPolygon`）只负责把它画成填充多边形。
+- **半径方向仍然由 `PositionTrack` 管**：stat 只写值 `x`，位置把它仿射映射进 `[r0, r1]`。
+  violin 不接管半径，因此 `scales`/`limits`/`baseline` 对它与对 col 生效一致。
+- **密度不能走过 `position`**：`violinwidth` 是 stat 的产物而不是美学，`PositionTrack`
+  拿到的 frame 里已经没有它了（ggplot2 按美学筛列）。B41 的第一版就死在这里——
+  在 position 里读 `data$violinwidth` 永远拿到 `NULL`，所有点挤在 `theta` 上，图上什么都没有。
+  所以**角度偏移必须在 stat 里就写进 `y`**，position 只处理半径。
+- **不能靠 `after_stat()` 补 `y`**：track 的 `y` 是 `ggplot_add` 阶段由 `track_angles()`
+  写好的列（`track_defaults()` 映射 `.circos_theta`），`default_aes` 里再写
+  `y = after_stat(y)` 会覆盖那个映射，让所有节点塌到第一个角度。
+- **`order` 是保留名**：`GeomPolygon$draw_panel` 内部用 `order()` 排序，
+  stat 输出一个叫 `order` 的列会撞上 `"argument 1 is not a vector"`。轮廓点序用行序本身
+  （stat 按节点分组输出），不额外写列。
+
+参数：`n`（密度点数，默认 64）、`adjust`（`stats::density()` 的带宽倍数）、
+`trim`（默认 `TRUE`，丢掉观测范围外的密度尾巴；`FALSE` 时尾巴会伸出数据范围，
+`geom_track()` 的径向映射会按位置把它夹到 band 里）。样本量 `< 3` 或 `sd == 0` 的节点
+画不出密度，返回 `NULL`（该节点不出轮廓，其余照画），不静默画成直线。
+
+**为什么 `density` 是独立 geom 而不是 `violin` 的参数（§17-7 收尾）**
+
+两者共用同一份 KDE，差别在**闭合与否**，而这决定了画什么、以及接缝怎么处理：
+
+| | `"violin"` | `"density"` |
+|---|---|---|
+| 形状 | 闭合多边形（`theta ± w·half` 两侧 + 首尾相接） | **不闭合的单侧曲线**：从节点中心线 `theta` 升起，`theta + w·half` |
+| aes | `fill` 是主色 | `colour` 是主色（要填充就用 `"violin"`，不重复造一遍） |
+| 用途 | 看单个节点的分布形状 | 同一带里**叠多个分布**比较（ridgeline）；或多个节点共用一条带 |
+
+`"density"` 在极坐标里是 ridgeline：每个节点的曲线贴着自己的辐条升高，多个节点并排就是
+一圈山脊。这正是填充体做不到的事——填充会互相遮住，线不会。
+
+三条实现契约：
+
+1. **点序是单向的**：`x = at`、`y = theta + w · half`，按值升序排列。不折返、不闭合，
+   `GeomTrackDensity`（继承 `GeomPath`）直接连成线。`w` 归一化到 `[0, 1]`，与 violin 一致，
+   所以两种 geom 在同一 `band` 里高度可比。
+2. **不画地平线**。试做过 `floor =` 选项（在每个节点中心角画一条径向基线），
+   几何上是连贯的，但它横穿曲线占据的整个半径，读起来像"轴上多了一笔"而不是
+   山脊的地面；`trim = TRUE` 时曲线两端本来也不落在中心线上（实测 gap 0.01–0.09 rad），
+   硬贴一条线反而制造了不存在的关系。**需要地平线就叠一层 `geom = "col"` 或
+   自己加 `geom_segment()`**，不要塞进这个 geom。
+3. **接缝切分不能复用多边形的裁剪器**。`seam_pieces()` 是 Sutherland-Hodgman **闭合多边形**
+   裁剪，它的输出带着一整圈边界，对线没有意义。折线用 `seam_folds()`：顺序走顶点，
+   遇到相邻两点落在不同圈（`floor(y / 2π)`）就在缝处插入一个折点，收掉当前段、
+   在下一圈从 `0` 起一段新线。两段在圆上是同一个位置，所以线视觉上连续。
+
 **数据流（必须按这个顺序；ggplot2 的构建顺序是 stat → setup_data → position）**
 
 1. `geom_track()` 在 `ggplot_add` 时（`layer-add.R`）从图里取 layout，把"节点 id → θ"和
    "节点弧宽"两张查找表塞进 layer 的 `geom_params` 与 `position` 对象
    （**只读**，不改 `plot$data`/`plot$mapping`/`plot$scales`）。
-2. **角度方向**：`StatTrackBox`（boxplot）或 `GeomTrackBar$setup_data`（bar 类）写入
-   `y = theta`、`width = 节点弧宽 * width`；`GeomTrackBar` 先写 `width` 再调父类
-   `setup_data`（父类用 `width` 算 `ymin/ymax`）。`tile`/`point`/`text` 不需要这一步。
-   `node` 列保留；`group` 缺省设为 `node`。
+2. **角度方向**：`StatTrackBox`（boxplot）/ `StatTrackViolin`（violin）/
+   `StatTrackDensity`（density）或 `GeomTrackBar$setup_data`（bar 类）
+   写入 `y = theta`、`width = 节点弧宽 * width`；
+   `GeomTrackBar` 先写 `width` 再调父类 `setup_data`（父类用 `width` 算 `ymin/ymax`）。
+   `tile`/`point`/`text` 不需要这一步。`node` 列保留；`group` 缺省设为 `node`。
+   **聚合型 geom 的 stat 需要 `node` 这个美学才分得开组**，由 `ggplot_add` 补映射
+   （读 `track_geom_spec()$aggregate`，不是读 geom 名字）。
 3. **半径方向**：`PositionTrack$compute_layer()`（所有 geom 共用）——若 `y` 还不存在则写入
    `y = theta`；把 `x`/`xmin`/`xmax`/`xmiddle` 映射进 `[r0, r1]`；`stack = TRUE` 时先按节点累计再映射。
 4. 之后交给 geom 自己的 `draw_panel`，一切照常。
@@ -1106,7 +1169,12 @@ Config/testthat/edition: 3
 4. **标签避让**：是否内建 `ggrepel` 支持（`geom_node_text_repel()`）。v0.1 不做。
 5. **`geom_track_axis()` 的断点能否从 track 层自动取**（要跨层读，和 §8 的"只读"原则不冲突但需要设计）。
 6. **是否回到 CRAN**：取决于 §16 的依赖是否能保持住。
-7. **`violin` / `density` 轨道**：需要按节点算 KDE，成本和 `boxplot` 不是一个量级，放 M2 之后。
+7. **`violin` / `density` 轨道**：**都已落地**（§6.4，B41/B42）。`"violin"` 画闭合轮廓
+   多边形，`"density"` 画不闭合的 ridgeline 曲线；两者共用同一份 KDE，差别在闭合与否、
+   主色是 `fill` 还是 `colour`，以及接缝切分方式（多边形裁剪 vs 只打折不插点）。
+   **成本**：KDE 是每节点一次 `stats::density()`，实测 200 节点 × 40 样本、`n = 64`：
+   `ggplot_build()` 0.32 s，同样数据换成 `col` 轨道 0.06 s，净开销约 0.26 s，不构成瓶颈。
+   真正贵的是每节点一个 grob（多边形与线同量级）。
 8. **facet 乙方案（§9.1）**：facet 按变量重建 layout、每 panel 自己的节点子集。
    这是定位文档 D1"多环"图的前提；v0.1 不做，v0.2 评估。设计要点：
    `ggplot_add` 检测 `plot$facet`，facet 变量必须在**节点表**里；`circos_layout()`

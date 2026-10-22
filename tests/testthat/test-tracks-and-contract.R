@@ -728,3 +728,313 @@ test_that("geom_track_axis() takes its range from the track layer (B39)", {
         class = "ggcircos_error_data"
     )
 })
+
+test_that("a violin track puts the density on the node's arc and the value on the radius (B41)", {
+    m <- cor(mtcars)[1:6, 1:6]
+    nd <- layout_nodes(circos_layout(m, tracks = c(t = 0.3)))
+    set.seed(1)
+    vals <- data.frame(id = rep(nd$id, each = 60), v = rnorm(nrow(nd) * 60, 0.5, 0.12))
+    p <- ggcircos(m, tracks = c(t = 0.3)) +
+        geom_track(data = vals, aes(x = v), node = id, geom = "violin", band = "t")
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+
+    # one closed outline per node, and every node is present
+    expect_setequal(unique(d$node), nd$id)
+    expect_equal(length(unique(d$group)), nrow(nd))
+
+    # the value ("v") runs along the radius: the built `x` is inside the band
+    band <- c(1.06, 1.36)
+    expect_true(all(d$x >= band[1] - 1e-8 & d$x <= band[2] + 1e-8))
+    # ... and it is the data's own range, not a constant
+    expect_gt(diff(range(d$x)), 0.1)
+
+    # the density runs along the arc: each outline is centred on its node's
+    # theta and reaches the node's whole (width-shrunk) arc at its widest
+    for (i in seq_len(nrow(nd))) {
+        s <- d[d$node == nd$id[i], ]
+        span <- max(s$y) - min(s$y)
+        expect_equal(span, 0.3 * 0 + nd$width[i] * 0.9, tolerance = 1e-6)
+        expect_equal(mean(range(s$y)), nd$theta[i], tolerance = 1e-6)
+    }
+
+    # the widest point is where the samples pile up, not at the ends: that is
+    # what makes it a violin instead of a lens
+    s <- d[d$node == nd$id[1], ]
+    s <- s[order(s$x), ]
+    half <- nrow(s) / 2
+    dev <- abs(s$y[seq_len(half)] - nd$theta[1])
+    expect_gt(which.max(dev), 1)
+    expect_lt(which.max(dev), half)
+})
+
+test_that("the violin's angular offset survives the stat -> position hand-off (B41)", {
+    # The first implementation put the density in a stat column and asked the
+    # position to spread it, which cannot work: ggplot2 hands a position only
+    # the *aesthetics*, and a stat's extra columns are not aesthetics. Every
+    # row then sat at the node centre and the track drew nothing visible.
+    #
+    # The offset therefore has to be in `y` before the position runs. Assert it
+    # at the stat, so a future refactor that moves it back fails here.
+    m <- cor(mtcars)[1:5, 1:5]
+    nd <- layout_nodes(circos_layout(m, tracks = c(t = 0.3)))
+    set.seed(2)
+    vals <- data.frame(id = rep(nd$id, each = 40), v = rnorm(nrow(nd) * 40, 0.5, 0.1))
+    lyr <- geom_track(data = vals, aes(x = v), node = id, geom = "violin", band = "t")
+    built <- ggplot2::ggplot_build(ggcircos(m, tracks = c(t = 0.3)) + lyr)$data[[1L]]
+    # more than one distinct angle per node means the arc is being used
+    per_node <- tapply(built$y, built$node, function(z) length(unique(round(z, 9))))
+    expect_true(all(per_node > 1))
+
+    # and the stat's own output carries the offset, not a flat centre line
+    d <- built
+    expect_gt(diff(range(d$y)), 1)
+})
+
+test_that("a violin crossing the seam is cut, not squished (B41)", {
+    # The y scale spans [0, 2*pi] and squishes what falls outside. A bar only
+    # narrows at the seam; a closed outline would collapse into a flat edge.
+    m <- cor(mtcars)[1:4, 1:4]
+    lay <- circos_layout(m, start = 5.9, tracks = c(t = 0.45))
+    nd <- layout_nodes(lay)
+    straddles <- nd$id[nd$theta1 < nd$theta0]
+    expect_length(straddles, 1L)
+
+    set.seed(3)
+    vals <- data.frame(id = rep(nd$id, each = 120), v = rnorm(nrow(nd) * 120, 0.5, 0.1))
+    d <- ggplot2::ggplot_build(
+        ggcircos(m, start = 5.9, tracks = c(t = 0.45)) +
+            geom_track(data = vals, aes(x = v), node = id, geom = "violin", band = "t")
+    )$data[[1]]
+
+    # nothing lands outside the panel...
+    expect_true(all(d$y >= -1e-9 & d$y <= 2 * pi + 1e-9))
+    # ...the straddling node is drawn as two pieces, one per side of the seam
+    expect_equal(length(unique(d$group[d$node == straddles])), 2L)
+    # ...and the rest stay whole
+    for (k in setdiff(nd$id, straddles)) {
+        expect_equal(length(unique(d$group[d$node == k])), 1L)
+    }
+    # the outline still fills the node's whole arc: the peak deviation is half
+    # of it, measured the circular way (a raw `-` across the seam is a turn
+    # off, which is exactly the mistake this test guards against)
+    s <- d[d$node == straddles, ]
+    centre <- nd$theta[nd$id == straddles]
+    dev <- abs(((s$y - centre + pi) %% (2 * pi)) - pi)
+    expect_equal(max(dev), nd$width[nd$id == straddles] * 0.9 / 2, tolerance = 1e-6)
+    # and no single piece crosses the seam, or it would be squished flat
+    for (g in unique(s$group)) {
+        expect_true(all(range(s$y[s$group == g]) >= -1e-9))
+        expect_true(all(range(s$y[s$group == g]) <= 2 * pi + 1e-9))
+    }
+})
+
+test_that("a violin needs a spread, and says so when there is none (B41)", {
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, tracks = c(t = 0.3)))
+    base <- function(d, ...) {
+        ggcircos(m, tracks = c(t = 0.3)) +
+            geom_track(data = d, aes(x = v), node = id, geom = "violin",
+                       band = "t", ...)
+    }
+    # one constant value per node has no density to estimate: the layer warns
+    # instead of drawing an unexplained empty band
+    flat <- data.frame(id = rep(nd$id, each = 5), v = 1)
+    expect_warning(
+        ggplot2::ggplot_build(base(flat)),
+        "nothing to draw"
+    )
+    # a node with too few values is skipped, the others still draw
+    set.seed(4)
+    mixed <- data.frame(
+        id = c(rep(nd$id[1], 2), rep(nd$id[-1], each = 30)),
+        v = rnorm(2 + 30 * (length(nd$id) - 1), 0.5, 0.1)
+    )
+    d <- ggplot2::ggplot_build(base(mixed))$data[[1]]
+    expect_false(nd$id[1] %in% d$node)
+    expect_setequal(unique(d$node), nd$id[-1])
+})
+
+test_that("stacking is refused for geoms whose stat aggregates per node (B41)", {
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, tracks = c(t = 0.3)))
+    set.seed(5)
+    vals <- data.frame(id = rep(nd$id, each = 20), v = runif(nrow(nd) * 20))
+    for (g in c("violin", "boxplot")) {
+        expect_error(
+            ggcircos(m, tracks = c(t = 0.3)) +
+                geom_track(data = vals, aes(x = v), node = id, geom = g,
+                           band = "t", stack = TRUE),
+            class = "ggcircos_error_data"
+        )
+    }
+    # the non-aggregating geoms still stack
+    expect_s3_class(
+        ggplot2::ggplotGrob(
+            ggcircos(m, tracks = c(t = 0.3)) +
+                geom_track(data = vals, aes(x = v), node = id, geom = "col",
+                           band = "t", stack = TRUE)
+        ),
+        "gtable"
+    )
+})
+
+test_that("violin honours n, adjust and trim (B41)", {
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, tracks = c(t = 0.3)))
+    set.seed(6)
+    vals <- data.frame(id = rep(nd$id, each = 60), v = rnorm(nrow(nd) * 60, 0.5, 0.12))
+    one <- function(...) {
+        d <- ggplot2::ggplot_build(
+            ggcircos(m, tracks = c(t = 0.3)) +
+                geom_track(data = vals, aes(x = v), node = id, geom = "violin",
+                           band = "t", ...)
+        )$data[[1]]
+        d
+    }
+    # `n` is the number of density points per outline (two sides + seam rows)
+    expect_lt(nrow(one(n = 16L)), nrow(one(n = 64L)))
+    # a wider bandwidth smooths: fewer distinct radii, a narrower value range
+    narrow <- one(adjust = 3)
+    expect_lt(diff(range(narrow$x)), diff(range(one(adjust = 0.3)$x)))
+    # `trim = FALSE` keeps the kernel's tails beyond the data
+    expect_gt(diff(range(one(trim = FALSE)$x)), diff(range(one(trim = TRUE)$x)))
+})
+
+test_that("track_angles keeps `aggregate` out of the positional reach (B41)", {
+    # `aggregate` was added after `...` on purpose. Before that, a legacy
+    # positional call whose 7th argument used to fall into `...` would land on
+    # `aggregate` instead and silently switch a plain track to its full-arc
+    # branch -- a number is a valid `if()` condition in R, so nothing errors.
+    lay <- circos_layout(cor(mtcars)[1:3, 1:3])
+    ids <- colnames(cor(mtcars)[1:3, 1:3])
+    # the aggregate branch is `arc * width * 2` endpoints in, i.e. `width`
+    # shrinks the mark just as it does for the bin split
+    full <- layout_nodes(lay)$width[1] * 0.9
+
+    # positional 7th argument is ignored, not read as `aggregate`
+    legacy <- track_angles(data.frame(id = ids), "id", lay, 0.9, "col", FALSE, 0.5)
+    expect_equal(unique(round(legacy$ymax - legacy$ymin, 9)), round(full, 9))
+
+    # the default branch is picked from the geom when `aggregate` is not given
+    expect_equal(unique(round(track_angles(data.frame(id = ids), "id", lay,
+                                            geom = "violin")$ymax -
+                              track_angles(data.frame(id = ids), "id", lay,
+                                           geom = "violin")$ymin, 9)),
+                 round(full, 9))
+    # ... and can still be forced by name
+    forced <- track_angles(data.frame(id = ids), "id", lay, geom = "col",
+                           aggregate = TRUE)
+    expect_equal(unique(round(forced$ymax - forced$ymin, 9)), round(full, 9))
+})
+
+test_that("a density track draws an open ridgeline, not the violin's closed outline (B42)", {
+    m <- cor(mtcars)[1:6, 1:6]
+    nd <- layout_nodes(circos_layout(m, tracks = c(d = 0.3)))
+    set.seed(1)
+    vals <- data.frame(id = rep(nd$id, each = 60), v = rnorm(nrow(nd) * 60, 0.5, 0.12))
+    base <- function(g) {
+        ggcircos(m, tracks = c(d = 0.3)) +
+            geom_track(data = vals, aes(x = v), node = id, geom = g, band = "d")
+    }
+    v <- ggplot2::ggplot_build(base("violin"))$data[[1]]
+    dn <- ggplot2::ggplot_build(base("density"))$data[[1]]
+
+    # the violin is closed (up one side, back the other): 2 points per sample.
+    # The ridgeline is open: 1 point per sample, its own group per node.
+    expect_equal(nrow(dn) * 2, nrow(v))
+    expect_equal(length(unique(dn$group)), nrow(nd))
+    s <- dn[dn$group == dn$group[1], ]
+    expect_gt(nrow(s), 2)
+    # open: the curve does not return to where it started
+    expect_false(isTRUE(all.equal(s$y[1], s$y[nrow(s)])))
+
+    # it rises on ONE side of the node's centre, never both
+    ctr <- nd$theta[match(dn$node[1], nd$id)]
+    expect_true(all(s$y >= ctr - 1e-9))
+    # ...and reaches the node's half arc at its mode
+    expect_equal(max(s$y - ctr), nd$width[nd$id == dn$node[1]] * 0.9 / 2,
+                 tolerance = 1e-6)
+
+    # the value still runs along the radius, inside the band
+    expect_true(all(dn$x >= 1.06 - 1e-8 & dn$x <= 1.36 + 1e-8))
+})
+
+test_that("the two density geometries share one kernel (B42)", {
+    # Same `n`/`adjust`/`trim`, same KDE, same normalisation: the violin's
+    # outline and the ridgeline disagree only in whether the second half is
+    # emitted. Asserted on the stat, so a future change to one does not
+    # silently desynchronise them.
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, tracks = c(d = 0.4)))
+    set.seed(2)
+    vals <- data.frame(id = rep(nd$id, each = 50), v = rnorm(nrow(nd) * 50, 0.5, 0.1))
+    lay <- circos_layout(m, tracks = c(d = 0.4))
+    d <- track_angles(vals, "id", lay, 0.9, "density")
+    d$y <- d$.circos_theta
+    d$node <- d$id
+    d$x <- vals$v
+    dn <- StatTrackDensity$compute_panel(d, NULL, n = 40L, adjust = 1,
+                                         trim = TRUE, na.rm = FALSE)
+    v <- StatTrackViolin$compute_panel(d, NULL, n = 40L, adjust = 1,
+                                       trim = TRUE, na.rm = FALSE)
+    one_d <- dn[dn$node == nd$id[1], ]
+    one_v <- v[v$node == nd$id[1], ]
+    h <- d$.circos_half[d$id == nd$id[1]][1]
+    ctr <- d$.circos_theta[d$id == nd$id[1]][1]
+    # the ridgeline is the upper half of the outline, point for point
+    expect_equal(nrow(one_d), nrow(one_v) / 2)
+    expect_equal(one_d$y, one_v$y[seq_len(nrow(one_d))], tolerance = 1e-9)
+    expect_equal(one_d$x, one_v$x[seq_len(nrow(one_d))], tolerance = 1e-9)
+    # both normalise the height to the same half arc
+    expect_equal(max(one_d$y) - ctr, h, tolerance = 1e-6)
+})
+
+test_that("a ridgeline crossing the seam is split, and never spans a turn (B42)", {
+    # `seam_pieces()` is a *closed polygon* clipper, so it cannot be reused for
+    # a stroke: it returns a ring whose edges lie on the seam, which draws as a
+    # straight line the data never asked for. The curve uses `seam_folds()`,
+    # which only splits.
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, start = 5.2, tracks = c(d = 0.45)))
+    straddles <- nd$theta - nd$width / 2 < 0 | nd$theta + nd$width / 2 > 2 * pi
+    expect_true(any(straddles))
+    set.seed(3)
+    vals <- data.frame(id = rep(nd$id, each = 120), v = rnorm(nrow(nd) * 120, 0.5, 0.1))
+    d <- ggplot2::ggplot_build(
+        ggcircos(m, start = 5.2, tracks = c(d = 0.45)) +
+            geom_track(data = vals, aes(x = v), node = id, geom = "density",
+                       band = "d")
+    )$data[[1]]
+    # nothing is squished against the seam
+    expect_true(all(d$y >= -1e-9 & d$y <= 2 * pi + 1e-9))
+    # a piece never spans the whole turn (the signature of a broken split)
+    for (g in unique(d$group)) {
+        expect_lt(diff(range(d$y[d$group == g])), 2 * pi - 1e-6)
+    }
+    # the node whose curve reaches past the seam is the one that gets split
+    split_nodes <- names(which(tapply(d$group, d$node, function(z) length(unique(z))) > 1))
+    expect_true(length(split_nodes) >= 1)
+    # seam_folds leaves a curve that stays inside alone
+    inside <- ggcircos:::seam_folds(c(1, 2, 3), c(0.5, 0.6, 0.7))
+    expect_equal(length(inside), 1L)
+    expect_equal(inside[[1]]$y, c(0.5, 0.6, 0.7))
+})
+
+test_that("density needs a spread, and stacking is refused (B42)", {
+    m <- cor(mtcars)[1:4, 1:4]
+    nd <- layout_nodes(circos_layout(m, tracks = c(d = 0.3)))
+    base <- function(d, ...) {
+        ggcircos(m, tracks = c(d = 0.3)) +
+            geom_track(data = d, aes(x = v), node = id, geom = "density",
+                       band = "d", ...)
+    }
+    flat <- data.frame(id = rep(nd$id, each = 5), v = 1)
+    expect_warning(ggplot2::ggplot_build(base(flat)), "nothing to draw")
+    expect_error(
+        ggcircos(m, tracks = c(d = 0.3)) +
+            geom_track(data = data.frame(id = rep(nd$id, 20), v = runif(80)),
+                       aes(x = v), node = id, geom = "density", band = "d",
+                       stack = TRUE),
+        class = "ggcircos_error_data"
+    )
+})

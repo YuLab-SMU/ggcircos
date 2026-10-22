@@ -319,9 +319,15 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     )
     spec <- track_geom_spec(params$geom_name)
     object$mapping <- merge_mapping(
-        object$mapping, track_defaults(spec$rect)
+        object$mapping, track_defaults(spec$rect, aggregate = spec$aggregate)
     )
-    if (identical(params$geom_name, "boxplot") &&
+    # A stat that aggregates per node needs the node column *as an aesthetic*:
+    # ggplot2 hands a stat only mapped columns, so without this the stat sees
+    # no `node`, groups every row together and draws one mark for the whole
+    # ring. Which geoms aggregate is declared in `track_geom_spec()`; asking
+    # `identical(geom, "boxplot")` here is how violin first collapsed to a
+    # single outline (B41).
+    if (isTRUE(spec$aggregate) &&
         !is.null(params$node) && !"node" %in% names(object$mapping)) {
         object$mapping$node <- rlang::sym(params$node)
     }

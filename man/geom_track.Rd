@@ -28,9 +28,14 @@ geom_track(
 \item{mapping, data, show.legend, inherit.aes, na.rm, ...}{Standard \code{\link[ggplot2:layer]{ggplot2::layer()}} arguments.}
 
 \item{geom}{Which track geometry to use: \code{"col"}/\code{"bar"} (anchored at the
-band's inner edge), \code{"area"}, \code{"boxplot"}, \code{"point"}, \code{"tile"} or
-\code{"text"}. The last three sit at the band's centre when no \code{x} is mapped;
-with an \code{x} they land at the scaled value, the way a bar's outer edge does.}
+band's inner edge), \code{"area"}, \code{"boxplot"}, \code{"violin"}, \code{"density"},
+\code{"point"}, \code{"tile"} or \code{"text"}. The last three sit at the band's centre
+when no \code{x} is mapped; with an \code{x} they land at the scaled value, the way a
+bar's outer edge does. \code{"violin"} and \code{"density"} both put a node's density
+along its arc, with the value along the radius: \code{"violin"} fills the
+outline, \code{"density"} draws it as an open curve, so several distributions
+can share a band without covering each other. Both take \code{n}, \code{adjust} and
+\code{trim}, passed to \code{\link[stats:density]{stats::density()}} (see \code{...}).}
 
 \item{node}{Unquoted name of the column holding node ids. Required.}
 
@@ -44,7 +49,9 @@ able to reject negative input instead of silently drawing a flat track.}
 \code{\link[=ggcircos]{ggcircos()}}) or an explicit \code{c(r0, r1)} radius interval.}
 
 \item{stack}{Stack values within each node instead of scaling them
-independently. Values must then be non-negative.}
+independently. Values must then be non-negative. Not available for the
+aggregating geoms (\code{"boxplot"}, \code{"violin"}, \code{"density"}), whose stat has
+already folded each node into one mark.}
 
 \item{scales}{\code{"free"} normalises each node against its own range;
 \code{"fixed"} uses \code{limits} for every node.}
@@ -82,7 +89,10 @@ With band \verb{[r0, r1]} and per-node scale \code{"free"}, a value \code{v} map
 With \code{"fixed"}, \code{base} and \code{max} are \code{limits}. With \code{stack = TRUE}, values
 are converted to within-node fractions first. \code{"boxplot"} maps its
 \code{xmin}/\code{xmax} quantiles through the same affine map; anchored geoms
-stretch from \code{r0} to the mapped value.
+stretch from \code{r0} to the mapped value. \code{"violin"} and \code{"density"} map the
+values they sampled the density at, so the distribution is turned sideways
+inside the band: broad where the samples pile up, narrow where they thin
+out.
 }
 
 \examples{
@@ -95,4 +105,22 @@ vals <- data.frame(
 ggcircos(cor(mtcars), order = "hclust", tracks = c(values = 0.2)) +
     geom_chord(aes(fill = r)) +
     geom_track(data = vals, aes(x = value), node = id, geom = "col", band = "values")
+
+# a violin: several samples per node, the density spread along the arc
+set.seed(2)
+samples <- data.frame(
+    id = rep(colnames(mtcars), each = 40),
+    value = rnorm(ncol(mtcars) * 40, 0.5, 0.1),
+    stringsAsFactors = FALSE
+)
+ggcircos(cor(mtcars), order = "hclust", tracks = c(dist = 0.3)) +
+    geom_node_arc() +
+    geom_track(data = samples, aes(x = value), node = id,
+               geom = "violin", band = "dist")
+
+# the same density as an open curve, for comparing several nodes in one band
+ggcircos(cor(mtcars), order = "hclust", tracks = c(dist = 0.3)) +
+    geom_node_arc() +
+    geom_track(data = samples, aes(x = value), node = id,
+               geom = "density", band = "dist", colour = "steelblue")
 }

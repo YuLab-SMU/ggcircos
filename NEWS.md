@@ -13,8 +13,12 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
 * `geom_chord()` — ribbons or curves between node slots; `fill`/`colour`
   work with any ggplot2 scale and legend.
 * `geom_node_arc()`, `geom_node_text()`, `geom_node_point()` — the node ring.
-* `geom_track()` — columns, bars, areas, boxplots, points, tiles or text in a
-  radial band; `geom_track_axis()` — a readable ruler on a band.
+* `geom_track()` — columns, bars, areas, boxplots, violins, density curves,
+  points, tiles or text in a radial band; `geom_track_axis()` — a readable
+  ruler on a band. `geom = "violin"` fills each node's density outline with
+  the value along the radius; `geom = "density"` draws the same density as an
+  open ridgeline curve, so several distributions can share one band. Both take
+  `n`, `adjust` and `trim`, passed to `stats::density()`.
 * `sectors =` groups nodes into sectors with a wider gap; `geom_sector_label()`
   labels them.
 * `weight =` makes the geometry follow the values, the way `circlize::chordDiagram()`
@@ -90,14 +94,19 @@ ggplot2 >= 4.0 (it is built on `coord_radial()`).
   against the whole column.
 * `geom_node_text()` rejects `aes(angle = )` with `ggcircos_error_data`, since
   the coordinate owns the rotation; use `rotate = TRUE`.
+* A violin crossing the angular seam is cut at it and continued on the other
+  side, so the outline is never squished into a flat edge. A density curve is
+  split at the seam without adding vertices, so the stroke stays a stroke.
+* `stack = TRUE` is refused for `"boxplot"`, `"violin"` and `"density"`: their
+  stat folds a node's rows into one mark, so there is nothing left to stack.
 * `position_track()` holds only vectors (`band`, the node column name, the
   normalisation settings), so one position can be shared by several layers.
   A layer may take its band from it instead of repeating `band =`.
 
 ## Not yet
 
-Self-loops, label collision avoidance, violin/density tracks, angular axes,
-interactive output. See `vignette("from-circlize")`.
+Self-loops, an angular axis, interactive output. See
+`vignette("from-circlize")`.
 
 ## Deprecated shims
 

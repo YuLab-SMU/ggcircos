@@ -154,8 +154,8 @@ p_a + p_b + patchwork::plot_annotation(title = "two rings, one grammar")
 
 - Self-loops (`from == to`) are dropped with a message.
 - No label collision avoidance; rotate labels or shorten them.
-- No violin/density/heatmap *track types* beyond `col`, `bar`, `area`,
-  `boxplot`, `point`, `tile`, `text`.
+- No track type beyond `col`, `bar`, `area`, `boxplot`, `violin`, `density`,
+  `point`, `tile`, `text`.
 - No angular axis (the circle has no "hours" scale).
 - No ideogram / cytogenetic band knowledge — circlize ships the data, we do
   not.

@@ -11,7 +11,8 @@ track_angles(
   width = 0.9,
   geom = "col",
   has_value = FALSE,
-  ...
+  ...,
+  aggregate = NULL
 )
 }
 \arguments{
@@ -30,7 +31,14 @@ a data column named \code{x} or through a mapping. When \code{TRUE} no placehold
 column is written, because a column called \code{x} would shadow the layer's
 own mapping and every value would scale to the same radius.}
 
-\item{...}{Ignored; kept so older calls that passed \code{band_width} still work.}
+\item{...}{Ignored; kept so older calls that passed \code{band_width} still work.
+\code{aggregate} sits after \code{...} on purpose, so it can only be given by name:
+a positional argument there would silently land on it.}
+
+\item{aggregate}{Whether this geom's stat folds a node's rows into one mark
+(\code{"boxplot"}, \code{"violin"}). Such a mark keeps the node's whole arc rather
+than one bin of it. \code{NULL} asks \code{track_geom_spec()}; pass it explicitly
+when calling this function with a geometry of your own.}
 }
 \value{
 \code{data} with the angle columns added.

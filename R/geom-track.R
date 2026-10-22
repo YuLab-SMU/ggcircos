@@ -9,9 +9,14 @@
 #' @param mapping,data,show.legend,inherit.aes,na.rm,...
 #'   Standard [ggplot2::layer()] arguments.
 #' @param geom Which track geometry to use: `"col"`/`"bar"` (anchored at the
-#'   band's inner edge), `"area"`, `"boxplot"`, `"point"`, `"tile"` or
-#'   `"text"`. The last three sit at the band's centre when no `x` is mapped;
-#'   with an `x` they land at the scaled value, the way a bar's outer edge does.
+#'   band's inner edge), `"area"`, `"boxplot"`, `"violin"`, `"density"`,
+#'   `"point"`, `"tile"` or `"text"`. The last three sit at the band's centre
+#'   when no `x` is mapped; with an `x` they land at the scaled value, the way a
+#'   bar's outer edge does. `"violin"` and `"density"` both put a node's density
+#'   along its arc, with the value along the radius: `"violin"` fills the
+#'   outline, `"density"` draws it as an open curve, so several distributions
+#'   can share a band without covering each other. Both take `n`, `adjust` and
+#'   `trim`, passed to [stats::density()] (see `...`).
 #' @param node Unquoted name of the column holding node ids. Required.
 #' @param value Unquoted name of the column holding the values to plot, e.g.
 #'   `value = gc`. Optional (`aes(x = gc)` also works), but it is the robust
@@ -21,7 +26,9 @@
 #' @param band Either a declared track name (see the `tracks` argument of
 #'   [ggcircos()]) or an explicit `c(r0, r1)` radius interval.
 #' @param stack Stack values within each node instead of scaling them
-#'   independently. Values must then be non-negative.
+#'   independently. Values must then be non-negative. Not available for the
+#'   aggregating geoms (`"boxplot"`, `"violin"`, `"density"`), whose stat has
+#'   already folded each node into one mark.
 #' @param scales `"free"` normalises each node against its own range;
 #'   `"fixed"` uses `limits` for every node.
 #' @param limits Value range of the track; required when `scales = "fixed"`.
@@ -43,7 +50,10 @@
 #' With `"fixed"`, `base` and `max` are `limits`. With `stack = TRUE`, values
 #' are converted to within-node fractions first. `"boxplot"` maps its
 #' `xmin`/`xmax` quantiles through the same affine map; anchored geoms
-#' stretch from `r0` to the mapped value.
+#' stretch from `r0` to the mapped value. `"violin"` and `"density"` map the
+#' values they sampled the density at, so the distribution is turned sideways
+#' inside the band: broad where the samples pile up, narrow where they thin
+#' out.
 #'
 #' @examples
 #' set.seed(1)
@@ -55,6 +65,24 @@
 #' ggcircos(cor(mtcars), order = "hclust", tracks = c(values = 0.2)) +
 #'     geom_chord(aes(fill = r)) +
 #'     geom_track(data = vals, aes(x = value), node = id, geom = "col", band = "values")
+#'
+#' # a violin: several samples per node, the density spread along the arc
+#' set.seed(2)
+#' samples <- data.frame(
+#'     id = rep(colnames(mtcars), each = 40),
+#'     value = rnorm(ncol(mtcars) * 40, 0.5, 0.1),
+#'     stringsAsFactors = FALSE
+#' )
+#' ggcircos(cor(mtcars), order = "hclust", tracks = c(dist = 0.3)) +
+#'     geom_node_arc() +
+#'     geom_track(data = samples, aes(x = value), node = id,
+#'                geom = "violin", band = "dist")
+#'
+#' # the same density as an open curve, for comparing several nodes in one band
+#' ggcircos(cor(mtcars), order = "hclust", tracks = c(dist = 0.3)) +
+#'     geom_node_arc() +
+#'     geom_track(data = samples, aes(x = value), node = id,
+#'                geom = "density", band = "dist", colour = "steelblue")
 #' @importFrom ggplot2 layer
 #' @importFrom ggplot2 ggproto
 #' @export
@@ -87,6 +115,20 @@ geom_track <- function(mapping = NULL,
     if (missing(band)) band <- NULL
     spec <- track_geom_spec(geom)
     scales <- match.arg(scales)
+    # A stacked band accumulates one value per row up the band. An aggregating
+    # geometry has already folded the rows into one mark per node by the time
+    # the position runs, so stacking it would silently draw a single mark at
+    # the top of the band -- spec §6.4 rejects the combination instead.
+    if (isTRUE(stack) && isTRUE(spec$aggregate)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.code stack = TRUE} cannot be combined with {.val {geom}}: the \\
+                 stat collapses each node to one mark, so there is nothing to stack.",
+                i = "Use {.val col} or {.val area} for a stacked band."
+            )
+        )
+    }
     if (is.null(data) || is_waive(data)) {
         ggcircos_abort(
             "data",
@@ -193,18 +235,23 @@ geom_track <- function(mapping = NULL,
 #' the entries that need `ymin`/`ymax`. `band` marks the entries that fill
 #' the whole radial band (`tile`): their `xmin`/`xmax` are the band edges,
 #' not a mapped value, and their angular extent comes from the bin split in
-#' [track_angles()].
+#' [track_angles()]. `aggregate` marks the entries whose stat folds a node's
+#' rows into one mark (`boxplot`, `violin`, `density`): that mark keeps the
+#' node's whole arc instead of one bin of it, and the stat needs `node` mapped
+#' to group by.
 #' @keywords internal
 #' @noRd
 track_geom_spec <- function(geom) {
     specs <- list(
-        col = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE),
-        bar = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE),
-        area = list(stat = "identity", geom = GeomTrackArea, anchored = TRUE, rect = TRUE, band = FALSE),
-        boxplot = list(stat = StatTrackBox, geom = GeomTrackCrossbar, anchored = FALSE, rect = TRUE, band = FALSE),
-        point = list(stat = "identity", geom = GeomTrackPoint, anchored = FALSE, rect = FALSE, band = FALSE),
-        tile = list(stat = "identity", geom = GeomTrackTile, anchored = FALSE, rect = TRUE, band = TRUE),
-        text = list(stat = "identity", geom = GeomTrackText, anchored = FALSE, rect = FALSE, band = FALSE)
+        col = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE, aggregate = FALSE),
+        bar = list(stat = "identity", geom = GeomTrackBar, anchored = TRUE, rect = TRUE, band = FALSE, aggregate = FALSE),
+        area = list(stat = "identity", geom = GeomTrackArea, anchored = TRUE, rect = TRUE, band = FALSE, aggregate = FALSE),
+        boxplot = list(stat = StatTrackBox, geom = GeomTrackCrossbar, anchored = FALSE, rect = TRUE, band = FALSE, aggregate = TRUE),
+        violin = list(stat = StatTrackViolin, geom = GeomTrackViolin, anchored = FALSE, rect = TRUE, band = FALSE, aggregate = TRUE),
+        density = list(stat = StatTrackDensity, geom = GeomTrackDensity, anchored = FALSE, rect = TRUE, band = FALSE, aggregate = TRUE),
+        point = list(stat = "identity", geom = GeomTrackPoint, anchored = FALSE, rect = FALSE, band = FALSE, aggregate = FALSE),
+        tile = list(stat = "identity", geom = GeomTrackTile, anchored = FALSE, rect = TRUE, band = TRUE, aggregate = FALSE),
+        text = list(stat = "identity", geom = GeomTrackText, anchored = FALSE, rect = FALSE, band = FALSE, aggregate = FALSE)
     )
     if (!is.character(geom) || length(geom) != 1L || !geom %in% names(specs)) {
         ggcircos_abort(
@@ -235,6 +282,12 @@ track_geom_spec <- function(geom) {
 #'   column is written, because a column called `x` would shadow the layer's
 #'   own mapping and every value would scale to the same radius.
 #' @param ... Ignored; kept so older calls that passed `band_width` still work.
+#'   `aggregate` sits after `...` on purpose, so it can only be given by name:
+#'   a positional argument there would silently land on it.
+#' @param aggregate Whether this geom's stat folds a node's rows into one mark
+#'   (`"boxplot"`, `"violin"`). Such a mark keeps the node's whole arc rather
+#'   than one bin of it. `NULL` asks `track_geom_spec()`; pass it explicitly
+#'   when calling this function with a geometry of your own.
 #' @return `data` with the angle columns added.
 #' @examples
 #' lay <- circos_layout(cor(mtcars))
@@ -242,8 +295,10 @@ track_geom_spec <- function(geom) {
 #'     data.frame(id = colnames(mtcars)), "id", lay, 0.9, "col"
 #' ))
 #' @export
-track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_value = FALSE, ...) {
+track_angles <- function(data, node, layout, width = 0.9, geom = "col",
+                         has_value = FALSE, ..., aggregate = NULL) {
     node_col <- column_or_string(rlang::enquo(node), "node")
+    if (is.null(aggregate)) aggregate <- track_aggregates(geom)
     nt <- if (inherits(layout, "circos_layout")) layout$nodes else layout
     if (is.null(nt)) {
         ggcircos_abort("layout", "{.arg layout} must be a {.cls circos_layout} or a node table.")
@@ -280,8 +335,11 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_valu
     # *sequence along the arc* for every geometry that draws one mark per row:
     # a tile track is a heatmap, an area/line track is a coverage profile, and
     # a column track with several measurements per node is a brush of bars.
-    # Only `boxplot` is exempt: it aggregates the rows down to one mark per
-    # node, so that mark spans the whole arc.
+    #
+    # Aggregating geoms are exempt: their stat folds the rows into one mark per
+    # node, so that mark spans the whole arc. Which ones aggregate is declared
+    # once, in `track_geom_spec()`; listing names here instead is how violin
+    # first came out as one flat line (B41).
     #
     # With one row per node the bin is the whole `width` share of the arc, so
     # the split is bit-identical to centring on `theta` and nothing changes for
@@ -290,10 +348,18 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_valu
     # The angular extent goes through ymin/ymax, not the `width`/`height`
     # aesthetics: those are aesthetics, and a data column with an aesthetic's
     # name is overwritten by the layer's default_aes.
-    if (identical(geom, "boxplot")) {
+    if (aggregate) {
         half <- arc * width / 2
         data$ymin <- theta - half
         data$ymax <- theta + half
+        # The stat needs that half-width, and it cannot read it back off
+        # `ymin`/`ymax`: a node that straddles the seam has ymin < 0, and the
+        # angle scale (`limits = c(0, 2*pi)`, `oob = squish`) clamps it to 0
+        # before the stat runs. The stat then saw a half-width of (0 + arc)/2
+        # instead of arc/2 and drew the straddling violin at the wrong spread
+        # (B41). `.circos_half` is a plain column mapped as an aesthetic, so
+        # the scale never touches it.
+        data$.circos_half <- half
     } else {
         k <- as.numeric(stats::ave(seq_along(idx), idx, FUN = seq_along))
         m <- as.numeric(stats::ave(seq_along(idx), idx, FUN = length))
@@ -304,9 +370,22 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col", has_valu
     data
 }
 
+#' Whether a track geometry's stat aggregates a node's rows
+#'
+#' Wraps `track_geom_spec()` so the two places that care (`track_angles()` and
+#' the `node` mapping in `ggplot_add`) can never disagree, and an unknown name
+#' is not an error here: `geom_track()` reports that properly.
 #' @keywords internal
 #' @noRd
-track_defaults <- function(rect) {
+track_aggregates <- function(geom) {
+    if (!is.character(geom) || length(geom) != 1L) return(FALSE)
+    spec <- tryCatch(track_geom_spec(geom), error = function(e) NULL)
+    isTRUE(spec$aggregate)
+}
+
+#' @keywords internal
+#' @noRd
+track_defaults <- function(rect, aggregate = FALSE) {
     out <- list(
         x = rlang::quo(.data$x),
         y = rlang::quo(.data$.circos_theta)
@@ -314,6 +393,10 @@ track_defaults <- function(rect) {
     if (rect) {
         out$ymin <- rlang::quo(.data$ymin)
         out$ymax <- rlang::quo(.data$ymax)
+    }
+    if (aggregate) {
+        # the node's half arc, for the stat; see track_angles()
+        out$.circos_half <- rlang::quo(.data$.circos_half)
     }
     out
 }
@@ -428,12 +511,30 @@ PositionTrack <- ggproto("PositionTrack", Position,
         }
         r0 <- self$band[1] + (self$offset %||% 0)
         r1 <- self$band[2]
-        node_values <- if (!is.null(self$node_angles) && "y" %in% names(data)) {
+        # Which node a row belongs to. The node *column* is the exact answer and
+        # wins whenever it survived to here. It is there under the caller's own
+        # name for plain layers, and under the track's reserved aesthetic name
+        # `node` for aggregating stats (which emit ids, not rows). Otherwise the
+        # row is looked up by its angle, from the snapshot `ggplot_add()` took
+        # for the layers that never map `node` (spec §8.2: vectors only).
+        #
+        # Looking up by angle alone is wrong once a stat has rewritten `y`: a
+        # violin outline sits at theta +/- density, never at the node centre, so
+        # `match()` returned NA for every row and every violin kept raw values
+        # as radii -- values in the 0.2-0.8 range drawn outside the band (B41).
+        node_col <- if (!is.null(self$node) && self$node %in% names(data)) {
+            self$node
+        } else if ("node" %in% names(data)) {
+            "node"
+        } else {
+            NULL
+        }
+        node_values <- if (!is.null(node_col)) {
+            as.character(data[[node_col]])
+        } else if (!is.null(self$node_angles) && "y" %in% names(data)) {
             self$node_values[match(data$y, self$node_angles)]
         } else if (length(self$node_values) == nrow(data)) {
             self$node_values
-        } else if (!is.null(self$node) && self$node %in% names(data)) {
-            as.character(data[[self$node]])
         } else {
             rep("all", nrow(data))
         }

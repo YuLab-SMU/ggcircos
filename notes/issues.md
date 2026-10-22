@@ -721,6 +721,101 @@ BLAST 表输出的端点是 `qaccver`/`saccver`，直接喂进去报
 回归测试：`"repel = TRUE staggers only the crowded stretches (B40)"`
 （稀疏不动、密集外移、只增不减、角度逐个保持）。
 
+### B41. `violin` 轨道的三个独立坑：聚合标记、位置接管、接缝夹取 —— **已加 `geom = "violin"`（2026-10-22）**
+
+spec §17-7 原把 `violin` / `density` 排在 M2 之后（"按节点算 KDE，成本高一个量级"）。
+实测 KDE 本身不是问题（200 节点 × 40 样本、`n = 64`：`ggplot_build()` 0.32 s，
+同数据 `col` 轨道 0.06 s，即 KDE + 多边形的净开销约 0.26 s），真正的成本是**几何方向**：
+环里的 violin 是横躺的——值沿半径、密度决定该值处占多少弧，和 `geom_violin()` 正好差 90°。
+`stat_ydensity` 还要求离散 x 做分组，会撞上 y 轴已是弧度的老问题（同 `StatTrackBox`）。
+于是照 boxplot 的模式新写 `StatTrackViolin` + `GeomTrackViolin`（继承 `GeomPolygon`）。
+落地过程中撞了三个互不相干的坑，每个都能单独让轨道"画出来但看不见"：
+
+**坑 1：聚合标记只按名字列举，violin 不在名单里。**
+`track_angles()` 用 `identical(geom, "boxplot")` 决定"整弧 vs 切分"，
+`ggplot_add` 又用 `identical(params$geom_name, "boxplot")` 补 `node` 映射。
+加 violin 时两处都得加，漏一处就静默出错（`node` 全是 `-1`，6 个节点折成 1 个多边形）。
+修法：`track_geom_spec()` 增加 `aggregate` 字段，两处都读它——
+**"这个 geom 会不会把多行折成一行"是 geom 的属性，不是名字。**
+
+**坑 2：密度的角度偏移不能走过 `position`。**
+第一版把密度放在 stat 出的 `violinwidth` 列里，想让 `PositionTrack` 换算成角度。
+不行：ggplot2 交给 position 的只有**美学**，stat 的额外列到那里已经没了，
+position 读 `data$violinwidth` 永远拿到 `NULL`，所有行压在 `theta` 上，图上什么都没有。
+修法：偏移必须在 stat 里就写进 `y`，position 只管半径。
+
+**坑 3：接缝节点的 `ymin` 被坐标轴夹掉，半弧宽算错。**
+`ymin/ymax` 是 stat 拿半弧宽的来源，但跨 `θ=0` 的节点 `ymin < 0`，
+而 y 轴是 `limits = c(0, 2*pi)` + `oob = squish`，**在 stat 之前**就把它夹到 0。
+于是 `(ymax - ymin)/2` 得到 0.52 而不是 0.68，跨缝那个 violin 画窄了，
+而且闭合轮廓被压成一条贴缝的平边。
+修法：`track_angles()` 另写一列 `.circos_half`，由 `ggplot_add` 映射成美学——
+**轴不会碰不属于它的美学列**。跨缝时轮廓按 `seam_pieces()` 在缝处切开、
+另一半接到 `0` 之后（同一个圆上的同一位置），一个节点两个多边形。
+
+**顺带修掉的两处契约漏洞**（都是读代码发现的，不是猜的）：
+
+- `stack = TRUE` 在聚合型 geom 上被静默接受（`boxplot` 早就有这问题）：
+  stat 已经把节点折成一个标记，再堆叠只会画出一个顶到带顶的标记。现在报 `ggcircos_error_data`。
+- `PositionTrack` 原先**只**按 `y` 反查节点（`match(data$y, node_angles)`），
+  而聚合 stat 已经把 `y` 改成轮廓角，`match()` 全 `NA`，半径退化成原始值
+  （0.2–0.8 的值画到半径 0.2–0.8，跑到图中间）。现在节点列优先，角度只作退路。
+
+**R 的 `$` 部分匹配也咬了一次**：`params$n` 在有 `na.rm` 的 list 上会部分匹配到
+`params$na.rm`（`FALSE`），带宽参数静默变成 logical。
+`setup_params` 里一律用 `params[["n"]]`。
+
+回归测试（`test-tracks-and-contract.R`，五个 `test_that`）：几何方向与整弧占满、
+stat→position 交接后角度仍然散开、跨缝切两片且圆周测得的峰值为半弧、无密度时出声、
+`stack` 被拒、`n`/`adjust`/`trim` 生效。
+三个坑各自单独复现过一次（把修复回退，对应断言必红），确认测试抓的是真因不是巧合。
+
+### B42. `density` 轨道：四个"参数明明传了却没到"的坑 —— **已加 `geom = "density"`（2026-10-22）**
+
+`density` 与 `violin` 共用同一份 KDE（抽成 `node_density()`），差别只在**闭合与否**：
+violin 走 `theta ± w·half` 两侧闭上，density 只走 `theta + w·half` 一侧、不闭合，
+于是同一带里可以叠多个节点的分布（ridgeline），填充体做不到这件事。
+
+几何本身很顺，卡住的全是 ggplot2 的参数传递。四个坑彼此独立，症状都是"画出来但没变/没画"：
+
+**坑 1：`GeomTrackDensity$draw_panel` 带 `...`，`geom_params` 里的参数全被丢掉。**
+`Geom$parameters()` 的实现是：`draw_panel` 若含 `...`，它就转而读 `draw_group()` 的形参；
+而 `draw_group` 是继承来的、没有自定形参，于是只认 `na.rm`。
+`geom_track(..., floor = TRUE)` 一路传到 `geom_params` 都对，**到 `draw_panel` 前被过滤掉**，
+分支永远不执行。修法：`draw_panel` 显式列出 `lineend`/`linejoin`/`linemitre`/`arrow`/`na.rm`
+（从 `GeomPath` 抄来），再加 `extra_params` 声明自定参数。**`...` 看着更省事，但它让参数表不可见。**
+
+**坑 2：geom 级参数被 stat 抢走。**
+ggplot2 按名字在 stat 与 geom 之间分配 `layer(params=)`，同一个名字优先给 stat；
+`baseline` 又恰好已被 `geom_track()` 用作"free 刻度的下界"。
+所以自定的 geom 参数不能从 `geom_track(...)` 走，得在 `ggplot_add` 里直接写进
+`object$geom_params`——spec §6.2.1 早为 `rotate`/`nudge_x` 留过这个例外，照抄即可。
+**注意写入时机必须在 `drop_geometry_params()` 之后**，否则刚写进去就被当"轨道级设置"剥掉。
+
+**坑 3：`after_stat()` 才能映射 stat 产出的列。**
+`geom_add` 里的 mapping 是在 stat **之前**求值的，写 `.data$.circos_lo` 会直接报
+"data pronoun 里没有这一列"。stat 产出的列必须经 `after_stat()`。
+
+**坑 4：`coord_munch()` 会把两点直线插成弧。**
+极坐标下"固定角度、变化半径"的基线是一条**径向直线**，但给 `GeomPath` 会被
+`coord_munch()` 按弧长重采样成 4–5 个点，画成弯的。用 `coord$transform()` + `polylineGrob()`
+直接画，且**单位要用默认值**（transform 出来已是 0–1 npc，再报 `"native"` 会被二次缩放，
+基线只剩 9% 长）。
+
+**另外 `seam_folds()` 的第一版写错了**：我按"最短步长"展开角度序列再切圈，
+但密度曲线采样很密（实测相邻步长最大 0.056 rad，半圈是 3.14），**永远不会跳整圈**，
+于是展开只会把曲线自身的**下降段**误判成回绕，一次跨缝被切成 3 段、其中一段横跨整圈。
+修法：不做展开，每个点落在哪一圈就是哪一圈。
+
+**一个被砍掉的设计**：`floor = TRUE` 曾用来在每个节点中心角画一条径向"地平线"。
+几何上连贯（曲线从它升起），但它横穿曲线占据的整个半径，读起来像"轴上多画了一笔"；
+而且 `trim = TRUE` 时曲线两端本来就不落在中心线上（实测 gap 0.01–0.09 rad），
+硬贴一条线是在制造不存在的关系。**已删除**，需要地平线请叠 `geom = "col"` 或自加
+`geom_segment()`；spec §6.4 记了这条决定与理由。
+
+回归测试（`test-tracks-and-contract.R`）：开放曲线 vs 闭合轮廓的行数关系与单侧性、
+两个 geom 共用同一 KDE（逐点相等）、跨缝只切不插点且单段不跨整圈、`stack` 被拒、无密度时出声。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**
