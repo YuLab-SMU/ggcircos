@@ -258,7 +258,7 @@ circos_layout.matrix <- function(x, nodes = NULL, ..., columns = NULL) {
         ggcircos_abort(
             "data",
             c(
-                "The matrix is {.val {nrow(x)}}x{ncol(x)}}; a weight matrix must be square.",
+                "The matrix is {.val {nrow(x)}}x{ncol(x)}; a weight matrix must be square.",
                 i = "For a bipartite graph use a {.cls data.frame} with {.field from}/{.field to}."
             )
         )
@@ -1092,6 +1092,13 @@ resolve_endpoint_arc <- function(links, arcs, side) {
 allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
                            loop_depth = 0.5) {
     n <- nrow(nodes)
+    # `edge_id` is this package's row key -- it numbers links in layout order so
+    # the slot tables line up. A column of that name arriving from the caller is
+    # their data, not ours: rename it instead of overwriting it, or their
+    # numbering disappears under our renumbering with no warning (B48).
+    if ("edge_id" %in% names(links)) {
+        names(links)[names(links) == "edge_id"] <- "user_edge_id"
+    }
     if (nrow(links) == 0L) {
         links$edge_id <- integer(0)
         links$theta <- numeric(0); links$theta_end <- numeric(0)

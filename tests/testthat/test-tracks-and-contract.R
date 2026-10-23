@@ -1073,3 +1073,58 @@ test_that("a slot-aligned row sits on the slot of ITS node, not always the from 
     expect_false(isTRUE(all.equal(sort(c(d$ymin[2], d$ymax[2])),
                                   sort(c(d$ymin[1], d$ymax[1])))))
 })
+
+test_that("slot = works on a by= plot: every panel numbers its own links (B49)", {
+    # Each panel renumbers its links from 1, so the stacked table repeats
+    # `edge_id` (1, 1). Matching on it silently picked the first panel for both
+    # rows; the caller's numbering survives as `user_edge_id` (B48), and that is
+    # what a per-link track has to be matched against.
+    # P1 has three nodes and P2 has two, so the two rings place link 1 on a
+    # different arc from link 2 -- otherwise a wrong-panel match is invisible
+    nodes <- data.frame(id = c("a1", "b1", "c1", "a2", "b2"),
+                        g = c(rep("P1", 3), rep("P2", 2)),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a1", "a2"), to = c("b1", "b2"),
+                        g = c("P1", "P2"), stringsAsFactors = FALSE)
+    links$edge_id <- seq_len(nrow(links))          # the caller's own numbering
+    p0 <- ggcircos(links, nodes = nodes, by = "g", tracks = c(t = 0.2))
+    st <- p0$data
+    # sanity: the layout renumbered per panel, the caller's column survived
+    expect_equal(st$edge_id, c(1L, 1L))
+    expect_equal(st$user_edge_id, c(1L, 2L))
+
+    trk <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                      g = c("P1", "P1", "P2", "P2"),
+                      v = 0.5, edge_id = c(1L, 1L, 2L, 2L),
+                      stringsAsFactors = FALSE)
+    d <- ggplot2::ggplot_build(
+        p0 + geom_track(data = trk, ggplot2::aes(x = v), node = id, band = "t",
+                        slot = edge_id)
+    )$data[[1]]
+    expect_equal(nrow(d), 4L)
+    # rows 1-2 are P1's two ends of link 1, rows 3-4 are P2's two ends of link 2
+    expect_equal(sort(c(d$ymin[1], d$ymax[1])), sort(c(st$theta0[1], st$theta1[1])),
+                 tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[2], d$ymax[2])), sort(c(st$theta_end0[1], st$theta_end1[1])),
+                 tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[3], d$ymax[3])), sort(c(st$theta0[2], st$theta1[2])),
+                 tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[4], d$ymax[4])), sort(c(st$theta_end0[2], st$theta_end1[2])),
+                 tolerance = 1e-9)
+    # and the two panels really are different arcs: a match on the repeated
+    # `edge_id` would collapse both links onto the first panel's slot
+    expect_false(isTRUE(all.equal(sort(c(d$ymin[1], d$ymax[1])),
+                                  sort(c(d$ymin[3], d$ymax[3])))))
+})
+
+test_that("a caller's edge_id column is kept, not overwritten (B48)", {
+    # allocate_slots() numbers links in layout order under the name `edge_id`.
+    # A column of that name arriving from the caller is their data: it must be
+    # renamed, or their numbering vanishes silently and `slot =` lines up
+    # against the wrong links.
+    links <- data.frame(from = "a", to = "b", edge_id = 7L, stringsAsFactors = FALSE)
+    lk <- layout_links(circos_layout(links))
+    expect_equal(lk$user_edge_id, 7L)
+    expect_equal(lk$edge_id, 1L)
+    expect_false(identical(lk$user_edge_id, lk$edge_id))
+})

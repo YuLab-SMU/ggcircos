@@ -398,12 +398,20 @@ slot** 上，宽度正比于该链接的权重。
 2. `x`（值）仍由 `PositionTrack` 映射进 band，行为不变；
 3. 槽位与节点弧的对应由 layout 保证——轨道行"贴"在链接脚上，与弦的脚完全重合；
 4. `slot` 列引用不存在的 `edge_id` → `ggcircos_error_data`。
+5. **用户自带的 `edge_id` 列不被占用**（B48）：`allocate_slots()` 把链接按 layout
+   顺序编号写进 `edge_id`，这是本包的行键。调用方若已有同名列，重命名为 `user_edge_id`
+   保留，不覆盖——否则调用方的编号静默消失，`slot =` 会对上错误的链接。
+6. **`by =` 下按 `(group, user_edge_id)` 匹配**（B49）：每个 panel 各自从 1 编号，
+   堆叠后的 `edge_id` 必然重复（1, 1, ...），只能拿调用方的编号定位。
+   调用方没给 `edge_id` 时退回 `(group, edge_id)`。
 
 这是"轨道与链接对齐"的最小机制：不引入新几何，只是让 `track_angles` 接受
 **外部给定的弧段**。
 
 **回归测试**：轨道行的 `ymin/ymax` 与其链接的 `theta0/theta1` 逐位相等；
-一行一条链接时矩形完全覆盖该链接的 slot；引用非法行号报错。
+一行一条链接时矩形完全覆盖该链接的 slot；引用非法行号报错；
+`by =` 两个 panel 各一条链接时，行落在**各自 panel** 的槽位上（B49）；
+用户 `edge_id` 保留为 `user_edge_id`（B48）。
 
 ---
 

@@ -395,8 +395,7 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
 #' `x1 - value1` by hand.
 #' @keywords internal
 #' @noRd
-track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NULL,
-                              node = NULL) {
+track_align_slots <- function(data, slot, links, group_key = NULL, node = NULL) {
     data <- as.data.frame(data, stringsAsFactors = FALSE)
     node_col <- node
     if (!slot %in% names(data)) {
@@ -425,9 +424,28 @@ track_align_slots <- function(data, slot, links, group_key = NULL, layouts = NUL
             )
         )
     }
-    # build the lookup: (group, edge_id) -> theta0, theta1, arc, radius-of-endpoint
-    lk_key <- if (!is.null(group_key)) paste(links[[group_key]], links$edge_id, sep = "\r") else as.character(links$edge_id)
-    my_key <- if (!is.null(group_key)) paste(data[[group_key]], eid, sep = "\r") else as.character(eid)
+    # Which column of the stacked link table holds the caller's numbering.
+    #
+    # On a `by =` plot every panel numbers its own links from 1, so the stacked
+    # `edge_id` repeats (1, 1, ...) and matching on it picks the wrong panel.
+    # `allocate_slots()` renames a caller-supplied `edge_id` to `user_edge_id`
+    # (B48) precisely so that numbering survives -- that is the column to match
+    # on when the layout has renumbered (B49).
+    id_col <- if (!is.null(group_key) && "user_edge_id" %in% names(links)) {
+        "user_edge_id"
+    } else {
+        "edge_id"
+    }
+    lk_key <- if (!is.null(group_key)) {
+        paste(links[[group_key]], links[[id_col]], sep = "\r")
+    } else {
+        as.character(links[[id_col]])
+    }
+    my_key <- if (!is.null(group_key)) {
+        paste(data[[group_key]], eid, sep = "\r")
+    } else {
+        as.character(eid)
+    }
     hit <- match(my_key, lk_key)
     if (anyNA(hit)) {
         ggcircos_abort(

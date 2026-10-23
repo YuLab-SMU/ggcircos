@@ -90,3 +90,13 @@ test_that("weight must be a real, finite column (R4)", {
     expect_error(circos_layout(lk, weight = "w"), class = "ggcircos_error_data")
     expect_error(circos_layout(lk[1:2, ], weight = "nope"), class = "ggcircos_error_data")
 })
+
+test_that("the non-square matrix message is well formed (B50)", {
+    # a malformed cli template does not break the code, it only shows up when
+    # someone really hits that error -- and it is the first thing the package
+    # ever says to them. Assert the text, not just that it errors.
+    msg <- conditionMessage(tryCatch(ggcircos(matrix(1:6, 2, 3)), error = identity))
+    expect_match(msg, "2x3", fixed = TRUE)
+    expect_false(grepl("}", msg, fixed = TRUE))
+    expect_match(msg, "must be square", fixed = TRUE)
+})

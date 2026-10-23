@@ -74,7 +74,9 @@ rescale_from <- function(v, base, top, from, to) {
 #' @noRd
 pretty_within <- function(limits, n = 4) {
     br <- pretty(limits, n = n)
-    br[br >= limits[1] & br <= limits[2]]
+    # a degenerate span can make pretty() repeat a value; two labels on one tick
+    # is never useful, so drop duplicates before they reach the ring
+    unique(br[br >= limits[1] & br <= limits[2]])
 }
 
 #' Turn an unquoted column name (`enquo()`-ed) into a character value

@@ -368,7 +368,7 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
             object$data <- track_align_slots(
                 data = object$data, slot = params$slot,
                 links = plot$data, group_key = key,
-                layouts = lays, node = params$node
+                node = params$node
             )
         } else {
             object$data <- track_angles(
@@ -385,7 +385,7 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
             object$data <- track_align_slots(
                 data = object$data, slot = params$slot,
                 links = lay$links, group_key = NULL,
-                layouts = list(lay), node = params$node
+                node = params$node
             )
         } else {
             object$data <- track_angles(
