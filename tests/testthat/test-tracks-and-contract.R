@@ -1128,3 +1128,25 @@ test_that("a caller's edge_id column is kept, not overwritten (B48)", {
     expect_equal(lk$edge_id, 1L)
     expect_false(identical(lk$user_edge_id, lk$edge_id))
 })
+
+test_that("a node with no drawable distribution is reported, not silently dropped (B55)", {
+    # One good node and one with no spread: the plot still draws, and the
+    # dropped node used to vanish without a word -- on the ring that reads as
+    # "no distribution measured", the opposite of what happened.
+    links <- data.frame(from = c("a", "b"), to = c("b", "c"), stringsAsFactors = FALSE)
+    lay <- circos_layout(links, tracks = c(t = 0.3))
+    trk <- data.frame(id = c("a", "a", "a", "b", "b", "b"),
+                      v = c(1, 2, 3, 5, 5, 5), stringsAsFactors = FALSE)
+    p <- ggcircos(lay) +
+        geom_track(data = trk, ggplot2::aes(x = v), node = id, band = "t",
+                   geom = "violin", limits = c(0, 6))
+    msgs <- character(0)
+    withCallingHandlers(
+        ggplot2::ggplot_build(p),
+        message = function(m) {
+            msgs <<- c(msgs, conditionMessage(m))
+            invokeRestart("muffleMessage")
+        }
+    )
+    expect_true(any(grepl('Skipped 1 node .*"b"', msgs)))
+})

@@ -655,3 +655,34 @@ test_that("loop_depth is validated and changing it changes the fold", {
                                          loop_depth = dd$.circos_loop_depth)^2))
     expect_gt(min(rs), min(rd))   # deeper fold sits closer to the centre
 })
+
+test_that("repel staggers inside each panel, not across them (B53)", {
+    # On a `by =` plot the node table is stacked. Panels are separate rings, so
+    # a label in P2 at the same angle as one in P1 is not a collision. Walking
+    # the stacked table as one ring pushed every later panel's labels out.
+    nodes <- data.frame(id = rep(c("a", "b", "c"), 2),
+                        g = rep(c("P1", "P2"), each = 3),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a", "b"), to = c("b", "c"), g = c("P1", "P1"),
+                        stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "g") + geom_node_text(repel = TRUE)
+    d <- p$layers[[1]]$data
+    # two panels of three well-separated nodes: nothing collides anywhere
+    expect_equal(unique(d$r), 1)
+})
+
+test_that("repel compares the two labels that straddle the seam (B54)", {
+    # Angular order has no wrap-around, so the last label and the first are
+    # screen neighbours that the ordered walk never compared.
+    d <- data.frame(id = paste0("L", 1:4),
+                    theta = c(6.27, 0.01, 0.04, 3.0),
+                    r = rep(1, 4), stringsAsFactors = FALSE)
+    out <- repel_node_labels(list(data = d))
+    theta <- d$theta
+    idx <- order(theta)
+    first <- idx[1]; last <- idx[length(idx)]
+    arc <- (theta[first] + 2 * pi - theta[last]) * out$data$r[last]
+    expect_lt(arc, 1.15 * 0.055)
+    # the first label was pushed out from the last one rather than left at r = 1
+    expect_gt(out$data$r[first], 1)
+})

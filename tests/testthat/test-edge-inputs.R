@@ -100,3 +100,18 @@ test_that("the non-square matrix message is well formed (B50)", {
     expect_false(grepl("}", msg, fixed = TRUE))
     expect_match(msg, "must be square", fixed = TRUE)
 })
+
+test_that("a caller column named user_edge_id survives the edge_id rename (B56)", {
+    # B48 moves a caller's `edge_id` aside so the layout can number links. A
+    # fixed target name collided with a caller column already called
+    # `user_edge_id`, making one of the two unreachable by name.
+    links <- data.frame(from = "a", to = "b",
+                        edge_id = 7L, user_edge_id = 99L,
+                        stringsAsFactors = FALSE)
+    lk <- layout_links(circos_layout(links))
+    cols <- grep("^user_edge_id", names(lk), value = TRUE)
+    expect_length(cols, 2L)
+    # both numbers are still there, one under each name
+    expect_setequal(unlist(lapply(cols, function(n) lk[[n]])), c(7, 99))
+    expect_equal(lk$edge_id, 1L)
+})

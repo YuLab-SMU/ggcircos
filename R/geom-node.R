@@ -189,7 +189,7 @@ geom_node_point <- function(mapping = NULL,
 #' the labels up flat and loses the circular reading.
 #' @keywords internal
 #' @noRd
-repel_node_labels <- function(object, step = 0.055) {
+repel_node_labels <- function(object, step = 0.055, group = NULL) {
     d <- object$data
     if (is.null(d) || nrow(d) < 2L || !"r" %in% names(d)) return(object)
     # the node table carries `theta`; the layer maps it to `y`
@@ -199,18 +199,36 @@ repel_node_labels <- function(object, step = 0.055) {
     # an NA angle has no spoke to move along; leave it where it is
     ok <- is.finite(theta) & is.finite(d$r)
     if (sum(ok) < 2L) return(object)
-    idx <- which(ok)
-    idx <- idx[order(theta[idx])]
+    # on a `by =` plot the node table is stacked across panels, and panels are
+    # separate rings: a label in P2 at the same angle as one in P1 is not a
+    # collision. Walking the whole table as one ring used to push every label
+    # of every later panel out by a step for nothing (B53).
+    pieces <- if (!is.null(group) && group %in% names(d)) {
+        split(seq_len(nrow(d)), as.character(d[[group]]))
+    } else {
+        list(seq_len(nrow(d)))
+    }
     r <- d$r
-    # what matters is whether two labels sit closer than one line height on
-    # screen. At radius `r` an angular gap `d` is `r * d` of arc, so the
-    # threshold is a height in the same units as `step`, not a fixed angle --
-    # 60 nodes on a radius-1 ring are 0.105 rad apart, which is already
-    # comfortable, while 120 nodes are not.
-    for (k in seq.int(2L, length(idx))) {
-        prev <- idx[k - 1L]; this <- idx[k]
-        arc <- (theta[this] - theta[prev]) * r[prev]
-        if (arc < 1.15 * step) r[this] <- r[prev] + step
+    for (piece in pieces) {
+        idx <- piece[ok[piece]]
+        if (length(idx) < 2L) next
+        idx <- idx[order(theta[idx])]
+        # what matters is whether two labels sit closer than one line height on
+        # screen. At radius `r` an angular gap `d` is `r * d` of arc, so the
+        # threshold is a height in the same units as `step`, not a fixed angle --
+        # 60 nodes on a radius-1 ring are 0.105 rad apart, which is already
+        # comfortable, while 120 nodes are not.
+        for (k in seq.int(2L, length(idx))) {
+            prev <- idx[k - 1L]; this <- idx[k]
+            arc <- (theta[this] - theta[prev]) * r[prev]
+            if (arc < 1.15 * step) r[this] <- r[prev] + step
+        }
+        # the ring is closed: the last label and the first are neighbours too,
+        # and a plain ordered walk never compares them. Past ~120 nodes that
+        # pair is exactly where two labels overlap (B54).
+        first <- idx[1]; last <- idx[length(idx)]
+        arc <- (theta[first] + 2 * pi - theta[last]) * r[last]
+        if (arc < 1.15 * step) r[first] <- r[last] + step
     }
     # the mapping is `r + offset`, so the stagger has to ride along with the
     # radius column rather than replace the mapping (that would drop `offset`)

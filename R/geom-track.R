@@ -428,11 +428,15 @@ track_align_slots <- function(data, slot, links, group_key = NULL, node = NULL) 
     #
     # On a `by =` plot every panel numbers its own links from 1, so the stacked
     # `edge_id` repeats (1, 1, ...) and matching on it picks the wrong panel.
-    # `allocate_slots()` renames a caller-supplied `edge_id` to `user_edge_id`
-    # (B48) precisely so that numbering survives -- that is the column to match
-    # on when the layout has renumbered (B49).
-    id_col <- if (!is.null(group_key) && "user_edge_id" %in% names(links)) {
-        "user_edge_id"
+    # `allocate_slots()` renames a caller-supplied `edge_id` to a
+    # `user_edge_id`-style name (B48; `make.unique()` may have appended a
+    # suffix when the caller already uses that name, B56) precisely so that
+    # numbering survives -- that is the column to match on when the layout has
+    # renumbered (B49). `make.unique()` appends in order, so the *last*
+    # `user_edge_id*` column in name order is the protected one.
+    user_cols <- grep("^user_edge_id", names(links), value = TRUE)
+    id_col <- if (!is.null(group_key) && length(user_cols)) {
+        sort(user_cols)[length(user_cols)]
     } else {
         "edge_id"
     }

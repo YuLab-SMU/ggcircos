@@ -103,7 +103,13 @@ ggplot_add.ggcircos_node <- function(object, plot, object_name, ...) {
             if (!identical(params$nudge_x %||% 0, 0)) {
                 object$geom_params$nudge_x <- params$nudge_x
             }
-            if (isTRUE(params$repel)) object <- repel_node_labels(object)
+            if (isTRUE(params$repel)) {
+                # on a `by =` plot the walk must stay inside each panel: the
+                # rings are independent, so a same-angle label in another
+                # panel is not a collision (B53)
+                by_key <- attr(plot$data, "circos_by_key", exact = TRUE)
+                object <- repel_node_labels(object, group = by_key)
+            }
         }
     }
     re_add(drop_geometry_params(object), plot, object_name)

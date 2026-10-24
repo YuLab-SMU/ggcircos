@@ -160,13 +160,20 @@ StatTrackViolin <- ggproto("StatTrackViolin", Stat,
         panel <- if ("PANEL" %in% names(data)) data$PANEL[1] else 1L
         out <- vector("list", length(idx))
         drawn <- 0L
+        skipped <- character(0)
         for (k in names(idx)) {
             i <- idx[[k]]
             d <- node_density(data$x[i], n = n, adjust = adjust, trim = trim)
-            if (is.null(d)) next
+            if (is.null(d)) {
+                skipped <- c(skipped, k)
+                next
+            }
             centre <- data$y[i][1]
             h <- half[i][1]
-            if (!is.finite(centre) || !is.finite(h) || h <= 0) next
+            if (!is.finite(centre) || !is.finite(h) || h <= 0) {
+                skipped <- c(skipped, k)
+                next
+            }
             # up one side, back down the other: a closed outline in (value, angle)
             pieces <- seam_pieces(
                 c(d$value, rev(d$value)),
@@ -178,6 +185,15 @@ StatTrackViolin <- ggproto("StatTrackViolin", Stat,
             }
         }
         if (!drawn) abort_no_density("violin")
+        # a node with no drawable distribution used to vanish without a word;
+        # on the ring that reads as "no distribution measured", which is the
+        # opposite of what happened (B55)
+        if (length(skipped)) {
+            cli::cli_inform(c(
+                "i" = "Skipped {length(skipped)} node{?s} ({.val {skipped}}): a KDE \\
+                       needs {.code >= 3} distinct finite values with some spread."
+            ))
+        }
         out <- do.call(rbind, out[seq_len(drawn)])
         rownames(out) <- NULL
         out
@@ -231,19 +247,34 @@ StatTrackDensity <- ggproto("StatTrackDensity", Stat,
         panel <- if ("PANEL" %in% names(data)) data$PANEL[1] else 1L
         out <- vector("list", length(idx))
         drawn <- 0L
+        skipped <- character(0)
         for (k in names(idx)) {
             i <- idx[[k]]
             d <- node_density(data$x[i], n = n, adjust = adjust, trim = trim)
-            if (is.null(d)) next
+            if (is.null(d)) {
+                skipped <- c(skipped, k)
+                next
+            }
             centre <- data$y[i][1]
             h <- half[i][1]
-            if (!is.finite(centre) || !is.finite(h) || h <= 0) next
+            if (!is.finite(centre) || !is.finite(h) || h <= 0) {
+                skipped <- c(skipped, k)
+                next
+            }
             for (p in seam_folds(d$value, centre + d$weight * h)) {
                 drawn <- drawn + 1L
                 out[[drawn]] <- density_rows(p$x, p$y, k, drawn, panel)
             }
         }
         if (!drawn) abort_no_density("density")
+        # a node with no drawable distribution used to vanish without a word
+        # (B55)
+        if (length(skipped)) {
+            cli::cli_inform(c(
+                "i" = "Skipped {length(skipped)} node{?s} ({.val {skipped}}): a KDE \\
+                       needs {.code >= 3} distinct finite values with some spread."
+            ))
+        }
         out <- do.call(rbind, out[seq_len(drawn)])
         rownames(out) <- NULL
         out

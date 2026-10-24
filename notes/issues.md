@@ -1045,6 +1045,92 @@ spec §17-2 挂了很久："多半径节点超出 v0.1，但 layout 列留了 `r
 极度退化的区间（如 `c(0, 0)`）下 `pretty()` 会返回重复值，环上就会出现两个叠在一起的
 标签。`unique()` 一行修掉。目前尚无实测触发，属预防性。
 
+### B52. `geom_circos()` 不传 `geom` 就报错 —— **已修（2026-10-24）**
+
+弃用包装 `geom_circos()` 的本意是让重写前的旧脚本继续能跑，而 `geom` 是**可选**参数
+（文档里默认走柱状轨道）。实测不传就直接死：
+
+```r
+geom_circos(aes(x = value), data = old)
+#> ERR: `geom_circos()` cannot translate ""; use "col", "bar", ...
+```
+
+根因在 `missing()` 的位置：判定写在辅助函数 `geom_circos_geom_name()` 里，而调用方传进去的是
+`substitute(geom)`——参数**已经**被供上了（只是供的是"缺失"标记），所以辅助函数里
+`missing(geom)` 为 FALSE，`as.character()` 把标记变成 `""`，落到校验分支报错。
+辅助函数自己的兜底 `quote(geom_col)` 说明"col"本来就是想要的默认值。
+
+**修法**：默认判定移到包装层，那里还看得见用户的调用形状：
+`if (missing(geom)) "col" else geom_circos_geom_name(substitute(geom))`。两行。
+
+**教训**：`missing()` 只在**参数被绑定的那一层**有意义。传 `substitute(x)` 过了函数边界，
+缺失信息就丢了，而且不会报错——只会把 `""` 带进后续逻辑。
+
+回归测试：`"geom_circos() works without a geom argument (B52)"`。
+
+### B53. `repel` 在 `by =` 图上跨 panel 递推 —— **已修（2026-10-24）**
+
+`geom_node_text(repel = TRUE)` 在 `ggplot_add` 时对节点表做避让。`by =` 图的节点表是
+**各 panel 堆叠**在一起的，而当时**没有按分组列切开**——于是一个 panel 里同角度的标签
+被当成邻居。实测两个 panel、节点 id 相同的图：P2 的三个标签全部被外推一格
+（r = 1.055），而在它自己的 panel 里根本不碰撞。N 个 panel 就有第 N 个 panel 凭空外推 N−1 格。
+
+**修法**：`repel_node_labels()` 增加 `group` 参数，按 `circos_by_key` 分组、每组各自走一遍。
+
+**教训**：`by =` 的堆叠表里"同一列"可能横跨互不相干的坐标空间。凡是**按空间关系**做判断的
+逻辑（避让、排序、邻接），都必须先按 panel 切开。
+
+回归测试：`"repel staggers inside each panel, not across them (B53)"`。
+
+### B54. `repel` 从不比较跨缝的那一对标签 —— **已修（2026-10-24）**
+
+避让走的是"按角度排序后逐个比对前一个"。角度是个环，但排序不是：
+最后一个标签（θ ≈ 2π）和第一个（θ ≈ 0）在屏幕上是邻居，却**从来没有被比较过**。
+
+实测 150 个节点的真实布局：跨缝那对的弧间距 0.056，避让阈值 0.063——**碰撞了，但第一个标签
+保持 r = 1**，而其余 150 个里有 136 个被推开。节点少（约 120 以下）时间距超过阈值，
+所以 demo 图里一直看不出来。
+
+**修法**：每圈走完补一次跨缝比较，`(theta[first] + 2π − theta[last]) * r[last]`，
+小于阈值就把第一个从最后一个的半径往外推。
+
+**教训**：凡是"一圈上相邻"的概念，线性遍历都漏掉首尾这一对。测试数据要造**跨缝**的情形，
+不能只造顺序排列的。
+
+回归测试：`"repel compares the two labels that straddle the seam (B54)"`。
+
+### B55. violin / density 里退化的节点静默消失 —— **已修（2026-10-24）**
+
+`node_density()` 对"少于 3 个有限值"或"完全没有离散度"的节点返回 NULL，stat 跳过它。
+**全部**节点都不可画时会报一个清楚的错（`abort_no_density`），但**只有部分**节点不可画时，
+一个字都不说。
+
+实测一个正常节点 + 一个三值相同的节点：图照常画出，只剩 "a"，没有任何提示。
+环上少一个小提琴，读起来是"这个节点没有测到分布"——和事实正好相反。
+`node_density()` 的注释写着"A caller decides whether that is worth a message"，但没有调用方去决定。
+
+**修法**：两个 stat 各自收集跳过的节点，最后 `cli::cli_inform` 一次，报出数量与节点名。
+
+**教训**：注释里写"由调用方决定"的地方，要确认真有一个调用方决定了；否则就是约定悬空。
+
+回归测试：`"a node with no drawable distribution is reported, not silently dropped (B55)"`。
+
+### B56. B48 的重命名会撞上用户已有的 `user_edge_id` —— **已修（2026-10-24）**
+
+B48 把调用方的 `edge_id` 改名保护起来，但**目标名写死**成 `user_edge_id`。
+调用方若本来就有一个 `user_edge_id` 列，改名就撞成两列同名，其中一列按名字取不到。
+
+实测：输入 `edge_id = 7, user_edge_id = 99`，输出只剩 `user_edge_id = 7`——**99 那列静默消失**。
+一个为了"防止静默丢列"而做的修复，自己又静默丢了一列。
+
+**修法**：改名目标改用 `make.unique()` 挑一个没被占用的名字。同时发现 B48 真正的落点在
+`circos_layout_build()` 的 shadow 重命名循环（`edge_id` 本来就在 `reserved_link_cols` 里，
+早就被改名了），我上一轮加在 `allocate_slots()` 里的那段是**死代码**，一并删除。
+
+**教训**：同一件事有两处代码在做的时候，先确认哪一处真的在跑——否则修的是影子。
+
+回归测试：`"a caller column named user_edge_id survives the edge_id rename (B56)"`。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

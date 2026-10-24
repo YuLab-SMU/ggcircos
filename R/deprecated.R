@@ -47,7 +47,12 @@ geom_circos <- function(mapping,
     node_col <- deprecated_circos_node(mapping)
     value <- mapping$x %||% deprecated_circos_x(mapping)
     band <- pwidth + offset
-    geom_name <- geom_circos_geom_name(substitute(geom))
+    # `missing(geom)` has to be asked *here*, where the user's call is still
+    # visible. Passing `substitute(geom)` on hands the helper a missing-arg
+    # marker, its own missing() test comes out FALSE, and as.character() of the
+    # marker is "" -- so the documented default call used to fail with
+    # `cannot translate ""` (B52).
+    geom_name <- if (missing(geom)) "col" else geom_circos_geom_name(substitute(geom))
     args <- list(
         mapping = ggplot2::aes(x = !!rlang::enquo(value)),
         data = data,

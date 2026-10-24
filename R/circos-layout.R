@@ -477,11 +477,20 @@ circos_layout_build <- function(links,
 
     links <- as.data.frame(links, stringsAsFactors = FALSE)
     # the package owns these column names; a user column of the same name is
-    # preserved as user_<name> rather than silently overwritten
+    # preserved as user_<name> rather than silently overwritten.
+    #
+    # The new name must be one the caller does not already use: a fixed
+    # `user_edge_id` collided with a caller column of that name and made the
+    # caller's own unreachable (B56). `make.unique()` appends a suffix, so the
+    # preserved column is always the last `user_<name>` in name order --
+    # `track_align_slots()` relies on that when it looks the column up.
     shadow <- setdiff(reserved_link_cols, c("from", "to"))
     shadow <- intersect(names(links), shadow)
     for (nm in shadow) {
-        links[[paste0("user_", nm)]] <- links[[nm]]
+        keep <- names(links)[!names(links) %in% nm]
+        new_name <- make.unique(c(names(links), paste0("user_", nm)))
+        new_name <- new_name[length(new_name)]
+        links[[new_name]] <- links[[nm]]
         links[[nm]] <- NULL
     }
     links$from <- as.character(links$from)
@@ -1092,13 +1101,9 @@ resolve_endpoint_arc <- function(links, arcs, side) {
 allocate_slots <- function(links, nodes, slot_fill = 0.9, slot_gap = NULL,
                            loop_depth = 0.5) {
     n <- nrow(nodes)
-    # `edge_id` is this package's row key -- it numbers links in layout order so
-    # the slot tables line up. A column of that name arriving from the caller is
-    # their data, not ours: rename it instead of overwriting it, or their
-    # numbering disappears under our renumbering with no warning (B48).
-    if ("edge_id" %in% names(links)) {
-        names(links)[names(links) == "edge_id"] <- "user_edge_id"
-    }
+    # `edge_id` numbers links in layout order so the slot tables line up. A
+    # caller column of that name has already been moved aside by
+    # `circos_layout_build()` (B48), so there is nothing to guard here.
     if (nrow(links) == 0L) {
         links$edge_id <- integer(0)
         links$theta <- numeric(0); links$theta_end <- numeric(0)
