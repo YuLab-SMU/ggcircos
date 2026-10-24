@@ -128,11 +128,11 @@ nd
 ```
 
 ``` r
-ggplot(nd, aes(x = 1, y = theta0)) +
-  geom_segment(aes(x = 1, xend = 1, y = theta0, yend = theta1), linewidth = 4) +
-  geom_point(aes(x = 1, y = theta), size = 2.5) +
+ggplot(nd, aes(xmin = 1, xmax = 1.03, ymin = theta0, ymax = theta1)) +
+  geom_rect(aes(fill = order)) +
+  geom_point(aes(x = 1.08, y = theta), size = 2.5, inherit.aes = FALSE) +
   coord_circos(limits = c(0, 2 * pi)) +
-  theme_circos()
+  theme_circos(legend.position = "none")
 ```
 
 <img src="man/figures/README-as-data-plot-1.png" alt="" width="100%" />
