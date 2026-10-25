@@ -110,3 +110,57 @@ test_that("interval inputs are validated (4.11: errors)", {
         class = "ggcircos_error_data"
     )
 })
+
+test_that("intervals normalise per panel on a by= plot (4.11 x 9.1)", {
+    # Each panel is its own ring, so a 1000-long chromosome in P1 and a
+    # 500-long one in P2 must both fill their own arc. Scaling them on one
+    # shared axis would make the short one look half as long for no reason.
+    nodes <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                        g = rep(c("P1", "P2"), each = 2),
+                        len = c(1000, 1000, 500, 500),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a1", "a2"), to = c("b1", "b2"),
+                        g = c("P1", "P2"), stringsAsFactors = FALSE)
+    trk <- data.frame(id = c("a1", "a2"), g = c("P1", "P2"),
+                      start = c(0, 0), end = c(1000, 500),
+                      stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "g", tracks = c(f = 0.2)) +
+        geom_track(data = trk, ggplot2::aes(xmin = start, xmax = end),
+                   node = id, band = "f", domain = len, width = 1)
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    expect_equal(nrow(d), 2L)
+    # both are "the whole chromosome", so both spans are one full node arc
+    expect_equal(d$ymax[1] - d$ymin[1], d$ymax[2] - d$ymin[2], tolerance = 1e-9)
+    # and each sits inside its own panel's arcs, not the other's
+    lays <- circos_layout(links, nodes = nodes, by = "g")
+    a1 <- layout_nodes(lays[["P1"]]); a2 <- layout_nodes(lays[["P2"]])
+    expect_gte(d$ymin[1], a1$theta0[1] - 1e-9)
+    expect_lte(d$ymax[1], a1$theta1[1] + 1e-9)
+    expect_gte(d$ymin[2], a2$theta0[1] - 1e-9)
+    expect_lte(d$ymax[2], a2$theta1[1] + 1e-9)
+})
+
+test_that("a half-length interval is half the arc in every panel", {
+    nodes <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                        g = rep(c("P1", "P2"), each = 2),
+                        len = c(1000, 1000, 500, 500),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a1", "a2"), to = c("b1", "b2"),
+                        g = c("P1", "P2"), stringsAsFactors = FALSE)
+    # 50% of each chromosome, expressed in that chromosome's own units
+    trk <- data.frame(id = c("a1", "a2"), g = c("P1", "P2"),
+                      start = c(0, 0), end = c(500, 250),
+                      stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "g", tracks = c(f = 0.2)) +
+        geom_track(data = trk, ggplot2::aes(xmin = start, xmax = end),
+                   node = id, band = "f", domain = len, width = 1)
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    spans <- d$ymax - d$ymin
+    expect_equal(spans[1], spans[2], tolerance = 1e-9)
+    lays <- circos_layout(links, nodes = nodes, by = "g")
+    arc <- function(l) {
+        nd <- layout_nodes(l); nd$theta1[1] - nd$theta0[1]
+    }
+    expect_equal(spans[1] / arc(lays[["P1"]]), 0.5, tolerance = 1e-9)
+    expect_equal(spans[2] / arc(lays[["P2"]]), 0.5, tolerance = 1e-9)
+})

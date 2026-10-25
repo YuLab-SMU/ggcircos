@@ -616,6 +616,22 @@ track_align_slots <- function(data, slot, links, group_key = NULL, node = NULL) 
     } else {
         "edge_id"
     }
+    # an unnumbered caller on a `by =` plot has no safe key: the panels
+    # renumber their links, so their `edge_id` is 1 in every ring and the
+    # caller's 1..N matches nothing. Say plainly what to add rather than let
+    # the generic "not in the layout" fire two branches down (the message
+    # pointed at the user's data, which was right).
+    if (!is.null(group_key) && !length(user_cols)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "On a {.arg by} plot, {.field {slot}} needs your own link numbering: \
+                 every panel renumbers its links, so there is no unambiguous id to match.",
+                i = "Add an {.field edge_id} column to the links (e.g. \
+                     {.code links$edge_id <- seq_len(nrow(links))}) and use it here."
+            )
+        )
+    }
     lk_key <- if (!is.null(group_key)) {
         paste(links[[group_key]], links[[id_col]], sep = "\r")
     } else {

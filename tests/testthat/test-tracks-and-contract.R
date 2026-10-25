@@ -1150,3 +1150,52 @@ test_that("a node with no drawable distribution is reported, not silently droppe
     )
     expect_true(any(grepl('Skipped 1 node .*"b"', msgs)))
 })
+
+test_that("slot = on a by= plot without a caller edge_id column fails clearly", {
+    # Each panel renumbers its links, so `edge_id` is 1 in every ring and the
+    # caller's bare 1..2 matches nothing. The old error said the links were
+    # "not in the layout", pointing at the user's data when the real fix is to
+    # number the links.
+    nodes <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                        g = rep(c("P1", "P2"), each = 2),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a1", "a2"), to = c("b1", "b2"),
+                        g = c("P1", "P2"), stringsAsFactors = FALSE)
+    # the caller passes numbering in the track data, not on the links
+    trk <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                      g = c("P1", "P1", "P2", "P2"),
+                      v = 0.5, edge_id = c(1L, 1L, 2L, 2L),
+                      stringsAsFactors = FALSE)
+    expect_error(
+        ggcircos(links, nodes = nodes, by = "g", tracks = c(t = 0.2)) +
+            geom_track(data = trk, ggplot2::aes(x = v), node = id, band = "t",
+                       slot = edge_id),
+        "needs your own link numbering"
+    )
+})
+
+test_that("slot = on a by= plot accepts the caller's numbering (F1 continuation)", {
+    # the same case as above, but with the links numbered: this is the
+    # combination the new error tells the caller to provide, and it must work
+    nodes <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                        g = rep(c("P1", "P2"), each = 2),
+                        stringsAsFactors = FALSE)
+    links <- data.frame(from = c("a1", "a2"), to = c("b1", "b2"),
+                        g = c("P1", "P2"), stringsAsFactors = FALSE)
+    links$edge_id <- seq_len(nrow(links))
+    trk <- data.frame(id = c("a1", "b1", "a2", "b2"),
+                      g = c("P1", "P1", "P2", "P2"),
+                      v = 0.5, edge_id = c(1L, 1L, 2L, 2L),
+                      stringsAsFactors = FALSE)
+    p <- ggcircos(links, nodes = nodes, by = "g", tracks = c(t = 0.2)) +
+        geom_track(data = trk, ggplot2::aes(x = v), node = id, band = "t",
+                   slot = edge_id)
+    d <- ggplot2::ggplot_build(p)$data[[1]]
+    expect_equal(nrow(d), 4L)
+    # each pair of rows sits on the slot of one panel's one link
+    st <- p$data
+    expect_equal(sort(c(d$ymin[1], d$ymax[1])), sort(c(st$theta0[1], st$theta1[1])),
+                 tolerance = 1e-9)
+    expect_equal(sort(c(d$ymin[3], d$ymax[3])), sort(c(st$theta0[2], st$theta1[2])),
+                 tolerance = 1e-9)
+})
