@@ -43,10 +43,15 @@
 #'   on the link's foot, the way circlize's per-link annotation rectangles do
 #'   (spec §4.10). Without it, a node's rows split its arc evenly.
 #' @param domain Optional: a **node-table** column holding each node's
-#'   coordinate ceiling (a chromosome length). Only used by interval tracks
+#'   coordinate ceiling -- the top of its axis, the way a chromosome length
+#'   runs `0 .. length`. Only used by interval tracks
 #'   (`aes(xmin = start, xmax = end)`), where it decides the scale a node's
-#'   `start`-to-`end` range is normalised against, per node. Without it each node is
-#'   scaled to the largest `xmax` its own rows report.
+#'   `start`-to-`end` range is normalised against, per node. Without it each
+#'   node is scaled to the largest `xmax` its own rows report.
+#'
+#'   This is the **maximum**, not the span: giving `max(xmax) - min(xmin)`
+#'   puts intervals past the top of their own axis, and that is rejected
+#'   rather than drawn flat.
 #' @param origin Lower bound of the interval coordinates, `0` by default.
 #'   Give `1` for a 1-based coordinate system.
 #' @param position A [position_track()] object. `NULL` (the default) builds
@@ -448,7 +453,7 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
                         width = width, aggregate = aggregate, has_value = has_value)
 }
 
-#' Place interval rows by their own [start, end] (spec sec.4.11)
+#' Place interval rows by their own start-to-end range (spec sec.4.11)
 #'
 #' A genomic feature is a range, not a point. The range occupies an angular
 #' span inside its node's arc; the radius is still the value's job, so this
@@ -540,6 +545,24 @@ track_place_intervals <- function(data, nodes, ids, domain = NULL, origin = 0,
                 "Node{?s} {.val {head(bad, 5)}} {?has/have} no coordinate extent to place \
                  intervals in.",
                 i = "Give {.arg domain} a positive length, or check {.field xmax}."
+            )
+        )
+    }
+    # `domain` is the coordinate CEILING (a chromosome length: 0 .. length),
+    # not the span of the data. Passing the span instead makes every interval
+    # start beyond the top of its own axis, and the clip below then flattens it
+    # to zero width -- silently. Say so instead (F6).
+    beyond <- data[[lo]] > upper | data[[hi]] > upper
+    if (any(beyond)) {
+        ggcircos_abort(
+            "data",
+            c(
+                "Interval bound{?s} exceed the {.arg domain} ceiling for \
+                 node{?s} {.val {head(unique(ids[beyond]), 5)}}.",
+                i = "{.arg domain} is the coordinate MAXIMUM (e.g. a chromosome \
+                     length), not the span {.code max(xmax) - min(xmin)}.",
+                i = "Bounds seen: {.val {head(data[[hi]][beyond], 5)}}; \
+                     ceiling: {.val {head(upper[beyond], 5)}}."
             )
         )
     }

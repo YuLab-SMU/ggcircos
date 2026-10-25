@@ -529,6 +529,12 @@ their own arc. Without a `domain`, each node falls back to the largest `end`
 it reports, which is right when the data already covers the whole thing and
 wrong when it does not.
 
+One thing to get right: `domain` is the coordinate **maximum** -- the top of
+the axis, the way a chromosome length runs `0 .. length` -- not the span of
+the data. Passing `max(end) - min(start)` puts every interval past the top of
+its own axis, and the package now rejects that explicitly instead of drawing
+flat rectangles.
+
 ```{r interval-plot, fig.width = 6, fig.height = 6, fig.cap = "A genomic interval track. Each node is scaled to its own chromosome length, so the features sit at their true position rather than being spread evenly. The radius carries the score."}
 interval_plot <- ggcircos(int_links, nodes = chrom, tracks = c(features = 0.22)) +
   geom_chord(fill = "grey92") +

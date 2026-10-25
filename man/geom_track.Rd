@@ -82,10 +82,15 @@ on the link's foot, the way circlize's per-link annotation rectangles do
 (spec §4.10). Without it, a node's rows split its arc evenly.}
 
 \item{domain}{Optional: a \strong{node-table} column holding each node's
-coordinate ceiling (a chromosome length). Only used by interval tracks
+coordinate ceiling -- the top of its axis, the way a chromosome length
+runs \verb{0 .. length}. Only used by interval tracks
 (\code{aes(xmin = start, xmax = end)}), where it decides the scale a node's
-\code{start}-to-\code{end} range is normalised against, per node. Without it each node is
-scaled to the largest \code{xmax} its own rows report.}
+\code{start}-to-\code{end} range is normalised against, per node. Without it each
+node is scaled to the largest \code{xmax} its own rows report.
+
+This is the \strong{maximum}, not the span: giving \code{max(xmax) - min(xmin)}
+puts intervals past the top of their own axis, and that is rejected
+rather than drawn flat.}
 
 \item{origin}{Lower bound of the interval coordinates, \code{0} by default.
 Give \code{1} for a 1-based coordinate system.}

@@ -164,3 +164,36 @@ test_that("a half-length interval is half the arc in every panel", {
     expect_equal(spans[1] / arc(lays[["P1"]]), 0.5, tolerance = 1e-9)
     expect_equal(spans[2] / arc(lays[["P2"]]), 0.5, tolerance = 1e-9)
 })
+
+test_that("domain is the coordinate ceiling, not the span (F6)", {
+    # `domain` says "the axis runs 0 .. this", the way a chromosome length
+    # does. Passing the span instead puts every interval past the top of its
+    # own axis; the clip then flattened it to zero width and the figure just
+    # came out wrong -- one collapsed row among correct ones. It now says so.
+    nodes <- data.frame(id = c("a", "b"), top = c(10, 10), stringsAsFactors = FALSE)
+    links <- data.frame(from = "a", to = "b", stringsAsFactors = FALSE)
+    lay <- circos_layout(links, nodes = nodes, tracks = c(f = 0.2))
+    # an interval that starts above the (wrongly given) ceiling of 2
+    trk <- data.frame(id = "a", lo = 3, hi = 5, stringsAsFactors = FALSE)
+    # the check runs at layer-add time, so building the plot is what errors
+    expect_error(
+        ggcircos(links, nodes = data.frame(id = c("a", "b"), span = c(2, 2),
+                                           stringsAsFactors = FALSE),
+                tracks = c(f = 0.2)) +
+            geom_track(data = trk, ggplot2::aes(xmin = lo, xmax = hi), node = id,
+                       band = "f", domain = span),
+        class = "ggcircos_error_data"
+    )
+
+    # the same data with the ceiling it actually needs
+    lay_ok <- circos_layout(links, nodes = nodes, tracks = c(f = 0.2))
+    p_ok <- ggcircos(lay_ok) +
+        geom_track(data = trk, ggplot2::aes(xmin = lo, xmax = hi), node = id,
+                   band = "f", domain = top, width = 1)
+    d <- ggplot2::ggplot_build(p_ok)$data[[1]]
+    expect_gt(d$ymax - d$ymin, 0)
+    # 3..5 on a 0..10 axis is 20% of the node's arc
+    nd <- layout_nodes(lay_ok)
+    expect_equal((d$ymax - d$ymin) / (nd$theta1[1] - nd$theta0[1]), 0.2,
+                 tolerance = 1e-9)
+})
