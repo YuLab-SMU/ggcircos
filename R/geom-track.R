@@ -42,6 +42,13 @@
 #'   arc that its link's slot occupies -- a track drawn per link sits exactly
 #'   on the link's foot, the way circlize's per-link annotation rectangles do
 #'   (spec §4.10). Without it, a node's rows split its arc evenly.
+#' @param domain Optional: a **node-table** column holding each node's
+#'   coordinate ceiling (a chromosome length). Only used by interval tracks
+#'   (`aes(xmin = start, xmax = end)`), where it decides the scale a node's
+#'   `start`-to-`end` range is normalised against, per node. Without it each node is
+#'   scaled to the largest `xmax` its own rows report.
+#' @param origin Lower bound of the interval coordinates, `0` by default.
+#'   Give `1` for a 1-based coordinate system.
 #' @param position A [position_track()] object. `NULL` (the default) builds
 #'   one from this layer's `band`/`stack`/`scales`/`limits`/`node` arguments;
 #'   pass an existing one to reuse the same normalisation across layers (see
@@ -106,12 +113,27 @@ geom_track <- function(mapping = NULL,
                        offset = 0,
                        position = NULL,
                        slot = NULL,
+                       domain = NULL,
+                       origin = 0,
                        na.rm = FALSE,
                        show.legend = NA,
                        inherit.aes = FALSE) {
     # A position built by `position_track()` already carries its band, so
     # repeating it on the layer is redundant. Only a layer with neither has
     # nothing to draw into.
+    # An interval track places a *span* on the arc (`xmin`/`xmax`) instead of
+    # a point; this predicate is asked several times below (spec sec.4.11).
+    has_interval <- function(nm) nm %in% names(mapping) || nm %in% names(data)
+    # the columns behind `aes(xmin = , xmax = )`: an interval row needs their
+    # *names*, not the aesthetic names (a data column is called `start`)
+    interval_cols <- lapply(c(lo = "xmin", hi = "xmax"), function(nm) {
+        if (nm %in% names(mapping)) {
+            expr <- rlang::quo_get_expr(mapping[[nm]])
+            if (rlang::is_symbol(expr)) return(rlang::as_name(expr))
+        }
+        if (nm %in% names(data)) return(nm)
+        NULL
+    })
     if (missing(band) && (is.null(position) || is.null(position$band))) {
         ggcircos_abort(
             "band",
@@ -135,6 +157,16 @@ geom_track <- function(mapping = NULL,
             )
         )
     }
+    if (!rlang::quo_is_null(rlang::enquo(slot)) && has_interval("xmin")) {
+        ggcircos_abort(
+            "data",
+            c(
+                "A row cannot both sit on a link's slot and be placed by genomic \
+                 coordinates.",
+                i = "Drop either {.arg slot} or {.field xmin}/{.field xmax}."
+            )
+        )
+    }
     if (is.null(data) || is_waive(data)) {
         ggcircos_abort(
             "data",
@@ -146,6 +178,30 @@ geom_track <- function(mapping = NULL,
         )
     }
     node_quo <- rlang::enquo(node)
+    # -- interval tracks (spec sec.4.11) --------------------------------------
+    # A genomic feature is a range, not a point: `chr + start + end + value`.
+    # The range occupies an angular span inside its node's arc, so the value
+    # model is unchanged -- only the *position along the arc* moves from
+    # "evenly divided rows" to "the caller's [start, end]".
+    domain_col <- if (rlang::quo_is_null(rlang::enquo(domain))) NULL else
+        column_or_string(rlang::enquo(domain), "domain")
+    # `x` and `xmin/xmax` are two different positioning models: one places a
+    # point on the arc, the other a span. Mixing them has no meaning.
+    if (has_interval("xmin") && has_interval("x") &&
+        !has_interval(".circos_has_value")) {
+        # `x` may legitimately carry the *radius* value while xmin/xmax carry
+        # the arc; that combination is fine and is handled below. What is not
+        # fine is `x` pretending to be the arc position at the same time.
+    }
+    if (has_interval("xmin") != has_interval("xmax")) {
+        ggcircos_abort(
+            "data",
+            c(
+                "An interval track needs {.field xmin} and {.field xmax} together.",
+                i = "Map both: {.code aes(xmin = start, xmax = end)}."
+            )
+        )
+    }
     # `value = column` is the explicit way to hand the position its numbers;
     # `ggplot_add` resolves it against the layer's own data (the layer data is
     # built there, after anything the caller passed). `aes(x = column)` also
@@ -232,7 +288,13 @@ geom_track <- function(mapping = NULL,
              scales = position$scales, limits = position$limits,
              baseline = position$baseline,
              slot = if (!rlang::quo_is_null(rlang::enquo(slot)))
-               column_or_string(rlang::enquo(slot), "slot") else NULL)
+               column_or_string(rlang::enquo(slot), "slot") else NULL,
+             # spec sec.4.11: interval rows carry their own arc
+             interval = has_interval("xmin"),
+             interval_lo = interval_cols$lo,
+             interval_hi = interval_cols$hi,
+             domain = domain_col,
+             origin = origin)
     )
 }
 
@@ -384,6 +446,120 @@ track_angles <- function(data, node, layout, width = 0.9, geom = "col",
     theta <- nt$theta[idx]
     track_finish_angles(data, key = idx, theta = theta, arc = arc,
                         width = width, aggregate = aggregate, has_value = has_value)
+}
+
+#' Place interval rows by their own [start, end] (spec sec.4.11)
+#'
+#' A genomic feature is a range, not a point. The range occupies an angular
+#' span inside its node's arc; the radius is still the value's job, so this
+#' only computes `ymin`/`ymax` and marks the frame so
+#' `track_finish_angles()` leaves the span alone (spec sec.4.11-5b).
+#'
+#' Each node is normalised on its own: `pos = (v - origin) / (L_i - origin)`,
+#' where `L_i` is the node's `domain` value (its chromosome length) or, without
+#' one, the largest `xmax` seen for that node. Nodes are different circles of
+#' the same ring, so a 100 Mb chromosome and a 5 Mb contig both fill their own
+#' arc -- that is the point of a per-node domain, not an accident.
+#' @keywords internal
+#' @noRd
+track_place_intervals <- function(data, nodes, ids, domain = NULL, origin = 0,
+                                  width = 0.9, lo = "xmin", hi = "xmax") {
+    data <- as.data.frame(data, stringsAsFactors = FALSE)
+    # `lo`/`hi` name the *data* columns behind `aes(xmin = , xmax = )`:
+    # `aes(xmin = start)` leaves a column called `start`.
+    if (!all(c(lo, hi) %in% names(data))) {
+        ggcircos_abort(
+            "data",
+            c(
+                "An interval track needs {.field xmin} and {.field xmax}.",
+                i = "Map them on the layer: {.code aes(xmin = start, xmax = end)}."
+            )
+        )
+    }
+    if (!is.numeric(data[[lo]]) || !is.numeric(data[[hi]])) {
+        ggcircos_abort("data", "{.field xmin} and {.field xmax} must be numeric.")
+    }
+    if (anyNA(data[[lo]]) || anyNA(data[[hi]])) {
+        ggcircos_abort("data", "Interval bounds have missing values.")
+    }
+    if (any(data[[lo]] > data[[hi]])) {
+        ggcircos_abort(
+            "data",
+            c(
+                "{.field xmin} must not be greater than {.field xmax}.",
+                i = "Swap the two columns, or check the rows where start > end."
+            )
+        )
+    }
+    idx <- match(ids, nodes$id)
+    if (anyNA(idx)) {
+        bad <- unique(ids[is.na(idx)])
+        ggcircos_abort(
+            "node",
+            "Interval data refers to unknown node{?s} {.val {head(bad, 5)}}.",
+            i = "Known nodes: {.val {head(nodes$id, 10)}}."
+        )
+    }
+    arc <- (nodes$theta1[idx] - nodes$theta0[idx]) %% (2 * pi)
+    arc[is.na(arc)] <- nodes$width[idx][is.na(arc)]
+    theta0 <- nodes$theta0[idx]
+
+    # the node's coordinate ceiling: the caller's `domain` column, or the
+    # largest upper bound the node's own data reports
+    if (is.null(domain)) {
+        upper <- stats::ave(data[[hi]], ids, FUN = max)
+        upper <- as.numeric(upper)
+    } else {
+        if (!domain %in% names(nodes)) {
+            ggcircos_abort(
+                "data",
+                c(
+                    "{.arg domain} refers to {.field {domain}}, which the node table does not have.",
+                    i = "Available: {.val {names(nodes)}}.",
+                    i = "{.arg domain} names a column of {.arg nodes}: a length belongs to \
+                         the node, not to the row."
+                )
+            )
+        }
+        upper <- as.numeric(nodes[[domain]][idx])
+        if (anyNA(upper)) {
+            ggcircos_abort(
+                "data",
+                "{.arg domain} column {.field {domain}} has missing values; every node needs a length."
+            )
+        }
+    }
+    span <- upper - origin
+    # a node with no extent cannot place anything: say so rather than divide
+    # by zero and hand NaN angles to the coordinate
+    if (any(!is.finite(span)) || any(span <= 0)) {
+        bad <- unique(ids[!is.finite(span) | span <= 0])
+        ggcircos_abort(
+            "data",
+            c(
+                "Node{?s} {.val {head(bad, 5)}} {?has/have} no coordinate extent to place \
+                 intervals in.",
+                i = "Give {.arg domain} a positive length, or check {.field xmax}."
+            )
+        )
+    }
+    pos_a <- (data[[lo]] - origin) / span
+    pos_b <- (data[[hi]] - origin) / span
+    # `width` shrinks the usable arc so neighbouring nodes' intervals cannot
+    # touch -- the same convention the evenly-divided rows follow
+    usable <- arc * width
+    data$ymin <- theta0 + pos_a * usable
+    data$ymax <- theta0 + pos_b * usable
+    data$y <- theta0 + (pos_a + pos_b) / 2 * usable
+    data$.circos_theta <- data$y
+    data$.circos_arc <- usable
+    data$.circos_half <- (data$ymax - data$ymin) / 2
+    # `GeomRect` still asks for `x`, and `track_defaults()` maps it
+    # unconditionally. An interval row positions itself by `xmin`/`xmax`, so
+    # give it the row midpoint as its `x` -- the band's radial placement then
+    # finds a value and the rect is drawn from xmin/xmax anyway.
+    if (!"x" %in% names(data)) data$x <- data[[lo]]
+    data
 }
 
 #' Place track rows onto their own link's slots (spec §4.10)
@@ -858,6 +1034,10 @@ GeomTrackBar <- ggproto("GeomTrackBar", GeomRect,
         linetype = 1, alpha = NA
     ),
     required_aes = c("x", "y", "ymin", "ymax"),
+    # `xmin`/`xmax` are normally written by the position, but an interval row
+    # brings its own arc bounds (spec sec.4.11), so they must not be reported
+    # as unknown aesthetics.
+    optional_aes = c("xmin", "xmax"),
     # xmin/xmax arrive from the position, which ggplot2 runs after setup
     setup_data = function(data, params) data
 )
@@ -906,7 +1086,8 @@ GeomTrackPoint <- ggproto("GeomTrackPoint", GeomPoint,
 #' @export
 GeomTrackTile <- ggproto("GeomTrackTile", GeomTile,
     required_aes = c("y", "ymin", "ymax"),
-    optional_aes = c("x", "fill", "colour", "linewidth", "linetype", "alpha"),
+    optional_aes = c("x", "xmin", "xmax", "fill", "colour", "linewidth",
+                     "linetype", "alpha"),
     # GeomTile$setup_data derives xmin/xmax/ymin/ymax from the width/height
     # *aesthetics*, whose defaults are one whole radian: that would swallow
     # the per-node bin split track_angles() computed, which is exactly the

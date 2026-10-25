@@ -370,7 +370,25 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
         band <- track_band(params$band_name, params$band, layout_node_table(lays[[1]]))
         # `slot =` (spec §4.10): rows sit on their own link's slot. The B-plan
         # links live in the plot's stacked table, keyed by (group, edge_id).
-        if (!is.null(params$slot)) {
+        if (isTRUE(params$interval)) {
+            # one normalisation per panel: each ring is its own circle, so a
+            # 100 Mb chromosome in P1 and a 5 Mb contig in P2 both fill their
+            # own arc (spec sec.4.11-3)
+            parts <- lapply(names(lays), function(k) {
+                rows <- as.character(object$data[[key]]) == k
+                if (!any(rows)) return(NULL)
+                part <- object$data[rows, , drop = FALSE]
+                track_place_intervals(
+                    data = part, nodes = layout_node_table(lays[[k]]),
+                    ids = as.character(part[[params$node]]),
+                    domain = params$domain, origin = params$origin %||% 0,
+                    width = params$width %||% 0.9,
+                    lo = params$interval_lo, hi = params$interval_hi
+                )
+            })
+            object$data <- do.call(rbind, parts[!vapply(parts, is.null, logical(1))])
+            rownames(object$data) <- NULL
+        } else if (!is.null(params$slot)) {
             object$data <- track_align_slots(
                 data = object$data, slot = params$slot,
                 links = plot$data, group_key = key,
@@ -387,7 +405,15 @@ ggplot_add.ggcircos_track <- function(object, plot, object_name, ...) {
     } else {
         lay <- require_layout(plot, object_name)
         band <- track_band(params$band_name, params$band, layout_node_table(lay))
-        if (!is.null(params$slot)) {
+        if (isTRUE(params$interval)) {
+            object$data <- track_place_intervals(
+                data = object$data, nodes = layout_node_table(lay),
+                ids = as.character(object$data[[params$node]]),
+                domain = params$domain, origin = params$origin %||% 0,
+                width = params$width %||% 0.9,
+                lo = params$interval_lo, hi = params$interval_hi
+            )
+        } else if (!is.null(params$slot)) {
             object$data <- track_align_slots(
                 data = object$data, slot = params$slot,
                 links = lay$links, group_key = NULL,

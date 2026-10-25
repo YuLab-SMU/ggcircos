@@ -20,6 +20,8 @@ geom_track(
   offset = 0,
   position = NULL,
   slot = NULL,
+  domain = NULL,
+  origin = 0,
   na.rm = FALSE,
   show.legend = NA,
   inherit.aes = FALSE
@@ -78,6 +80,15 @@ number} (\code{edge_id}) each row belongs to. Given it, the row occupies the
 arc that its link's slot occupies -- a track drawn per link sits exactly
 on the link's foot, the way circlize's per-link annotation rectangles do
 (spec §4.10). Without it, a node's rows split its arc evenly.}
+
+\item{domain}{Optional: a \strong{node-table} column holding each node's
+coordinate ceiling (a chromosome length). Only used by interval tracks
+(\code{aes(xmin = start, xmax = end)}), where it decides the scale a node's
+\code{start}-to-\code{end} range is normalised against, per node. Without it each node is
+scaled to the largest \code{xmax} its own rows report.}
+
+\item{origin}{Lower bound of the interval coordinates, \code{0} by default.
+Give \code{1} for a 1-based coordinate system.}
 }
 \value{
 A ggplot2 layer.

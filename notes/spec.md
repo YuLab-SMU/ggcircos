@@ -415,6 +415,82 @@ slot** 上，宽度正比于该链接的权重。
 
 ---
 
+### 4.11 基因组区间定位：节点内的 `[start, end]`（v0.3）
+
+**问题**：`geom_track()` 只认单一 `x`。基因组数据里一个基因、一段 CNV、一个 peak
+**本身就是区间**（`chr + start + end + value`），压成一个位置值会丢掉"这个 feature 有多宽"。
+circlize 的 `circos.genomicTrack()` / `circos.genomicRect()` 全是这个模型，这是
+"能画环形图"与"能做基因组环形图"的分界。
+
+**核心思路：不给 track 加新概念，而是让"值"从标量变成区间。**
+节点弧本来就是把 `[0, 2π)` 分给各节点；区间只是说"这段弧里我占 `[t(a), t(b)]`"，
+其中 `t()` 是该节点内的一维线性映射。所以 `position_track()` 现有的仿射映射原样可用，
+只需在**进入 position 之前**把 `start/end` 归一化成节点内的相对位置。
+
+**契约**
+
+1. **区间由三个美学声明**：`xmin` + `xmax`（新），或 `xmin`/`xmax`/`xmiddle` 三件套。
+   同时给 `x` 与 `xmin/xmax` → `ggcircos_error_data`（两种定位模型不能混）。
+2. **`domain` 参数**：`geom_track(domain = <节点长度列>)`，未加引号的节点表列名。
+   它给出每个节点的坐标上限（染色体的 `length`）。**不给时**取该节点数据里
+   `max(xmax)`，即"按数据自身的范围"归一化。
+   `domain` 列必须是节点表（`nodes`）的列，不是轨道数据的列——长度属于节点，不属于行。
+3. **归一化**：对节点 `i`、区间 `[a, b]`、域上限 `L_i`：
+   `pos = (v − lo_i) / (L_i − lo_i)`，`lo_i = 0`（除非给了 `origin`，见 4）。
+   `pos` 再交给现有的 `PositionTrack` 仿射映射进 `[r0, r1]` 的**弧方向**——
+   注意区间占的是**角度**，不是半径。
+4. **`origin`**：`geom_track(origin = 0)`，区间的下界（基因组坐标从 0 或 1 开始）。
+   缺省 `0`。只在 `1` 起始的坐标系里需要显式给 `1`。
+5. **角度换算**：`theta_start = theta0 + pos_a * arc`，`theta_end = theta0 + pos_b * arc`，
+   写入 `ymin`/`ymax`（与 4.10 的 slot 路径共用同一组列）。`y` 取中点。
+   因此**区间行不再参与 6.4 的"多行等分"**——它自带弧段，等价于每行一个 slot。
+
+5b. **不需要给 `track_finish_angles()` 加分支（初稿判断错了，已纠正）。**
+   本节初稿认为区间行需要 `track_finish_angles()` 的第三个分支。实现时核对调用图发现
+   **两条路根本不交汇**：`track_finish_angles()` 只被 `track_angles()` 调用，而区间走的是
+   `track_place_intervals()`（在 `ggplot_add` 里直接取代前者），`ymin`/`ymax` 已经完全算好，
+   不会有任何东西来覆盖它。加那个分支是**死代码**——实测把它禁用后行为毫无变化。
+   所以区间路径**自成一体**：算完 `ymin`/`ymax`/`y`/`.circos_half` 就返回，不进 `track_angles()`。
+
+   **教训**：写"某函数需要加分支"之前，先确认它真的会被调用。凭数据结构推演容易
+   补出一个永远不执行的 `if`。
+
+**几何：复用 `"tile"`，不新增 `"rect"`。**
+`GeomTrackTile` 的 `setup_data()` 本来就把数据原样透传（见 6.4 里 B7 的说明），
+它已经能画"径向填满 band、角度由 `ymin`/`ymax` 决定"的矩形——那正是区间要的形状。
+
+实测确认它**现在**画不出来：把 `ymin = c(0.1, 0.5)`、`ymax = c(0.3, 0.7)` 传给
+`geom = "tile"`，出来的却是 `0.102` / `1.016`（被等分覆盖）。原因不是缺分支，而是
+**区间数据必须走 `track_place_intervals()` 这条独立路径**——它在 `ggplot_add` 里就
+接管了 `ymin`/`ymax`，根本不进 `track_angles()`。所以**不需要新 geom，也不需要新分支**。
+
+这一条同时纠正了本节的初稿：先前写的"新增 `GeomTrackRect`"是重复造轮子，
+按"能复用就不新增"的原则撤掉。区间 + 值（径向高度 = 值）的组合用
+`geom = "col"` 配 `xmin`/`xmax` 定位即可，也不必新 geom。
+
+**与 4.10（`slot =`）的关系**：两者都写 `ymin/ymax`，但来源不同——`slot =` 取自
+layout 的链接槽位，`[start,end]` 取自节点域内的线性映射。**同时给 → 报错**，
+因为一行不可能既"贴在某条链接上"又"按基因组坐标定位"。
+
+**回归测试**（每条一个 `test_that`）
+
+1. 给定 `domain`，`start = 0, end = L` 的区间铺满该节点的**整条弧**（`theta0`/`theta1` 逐位相等）；
+2. `start = 0, end = L/2` 占前半弧，且相邻节点的同区间**不越界**（每节点各自归一化）；
+3. 不给 `domain` 时按该节点 `max(xmax)` 归一化；两个节点数据范围不同 → 各自铺满；
+4. `x` 与 `xmin` 同时出现 → `ggcircos_error_data`；
+5. 与 `slot =` 同时给 → `ggcircos_error_data`；
+6. `domain` 列不在节点表里 → `ggcircos_error_data`（消息列出可用列名）；
+7. 复用 `geom = "tile"`：给了显式 `ymin`/`ymax` 的行**不被等分覆盖**（5b 的直接断言——
+   这是实测里出错的那一处，区间行的 0.1/0.3 曾被改成 0.102/1.016）；
+8. 区间行不受 6.4 的等分影响：同一节点两行区间各自占据自己算出的弧段，
+   互不挤压（对比两根不相邻的区间，行数从 1 增到 2 时角度不变）。
+
+**不做的**：不做基因组坐标的**刻度**（`chr1:1,000,000` 那种标签）。轴仍是数值轴
+（6.5），用户自己把 `limits` 给成 `c(0, L)` 就能标出坐标。做完整 ideogram 刻度
+是另一个量级的功能，等有真实需求再说。
+
+---
+
 ### 4.5 错误
 
 统一 `cli::cli_abort(..., class = "ggcircos_error_<kind>")`，`<kind>` ∈
@@ -736,6 +812,8 @@ geom_track(
   baseline = NULL,             # "free" 的下界；NULL = 全非负时取 0，否则取 min
   width   = 0.9,               # 柱/扇区宽度，占节点弧比例
   offset  = NULL,              # band 为名字时忽略
+  domain  = NULL,              # v0.3 节点表列名：该节点的坐标上限（seq.4.11）
+  origin  = 0,                 # v0.3 区间下界（0 或 1 起始的基因组坐标）
   position = NULL,             # ⚠ A6：NULL = 内部新建 position_track()
   ...
 )
