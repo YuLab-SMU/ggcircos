@@ -78,12 +78,28 @@ call is the layout plus four layers, and the legend came free.
 | `circos.link(...)` | `geom_chord(type = "line")` | |
 | `circos.par(...)` | `theme_circos()` + layer arguments | there is no global state |
 | `get.cell.meta.data(...)` | `layout_nodes()` / `layout_links()` | the canvas query became a table |
+| `circos.genomicTrack(df)` | `geom_track(aes(xmin = start, xmax = end), domain = len)` | a feature is a range, not a point |
+| `circos.genomicRect(...)` | `geom_track(geom = "tile")` with `xmin`/`xmax` | no separate geom needed |
+| `circos.genomicAxis(...)` | `geom_track_axis(limits = c(0, chr_length))` | numeric ticks, not `chr1:1,000` labels |
+| a threshold line | `geom_track_hline(band = , value = )` | `value` is a track value, not an angle |
+| `circos.nested(...)` | not supported | compose two plots instead (see below) |
 
-Two translation rules cover most of the rest. circlize's global state
+Three translation rules cover most of the rest. circlize's global state
 (`circos.par`, the current track index) becomes explicit arguments on the
-layer that uses them. And circlize's `track.height` becomes a named width in
+layer that uses them. circlize's `track.height` becomes a named width in
 `tracks = c(name = width)`, because the bands must be declared before any
-layer can refer to them.
+layer can refer to them. And circlize's per-call `xlim`/`ylim` on a
+`genomicTrack()` becomes the `domain`/`origin` pair: `domain` names the node
+column holding each chromosome's length, so a 100 Mb chromosome and a 5 Mb
+contig each fill their own arc instead of being forced onto one scale.
+
+Two entries deserve a word. `circos.genomicAxis()` labels a chromosome in
+`chr1:1,000,000` form; `geom_track_axis()` is a plain numeric ruler, so you
+give it `limits = c(0, 4000)` and read the numbers as base pairs -- turning
+that into ideogram-style tick text is not something this package does yet.
+And `circos.nested()` draws one circle inside another sharing a common
+sector; here the two are separate plots, which is the point of the model: put
+them side by side with `patchwork`, or facet one plot by group.
 
 ## What only ggcircos can do
 

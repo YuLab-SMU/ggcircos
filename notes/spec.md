@@ -33,6 +33,12 @@
 - **多半径节点**（同一个节点挂多层弧）**已支持**：`nodes` 表里同一个 `id` 可以出现多次，
   每次一行、一层弧，半径取该行的 `r` 列（§4.9）。
 - **不做** 一图多环（一棵树上挂多个 circos）；一张图一个 layout。
+  这也包括 circlize 的 `circos.nested()`（环中环）。**2026-10-25 复核后维持不做**，
+  依据三条：(1) 它和"一张图一个 layout、layout 是数据"直接冲突——两个环要么共享坐标
+  （那就该是一个 layout 的多半径节点，§4.9）要么不共享（那就该是两张图）；
+  (2) 现有三条路径都实测可用：`patchwork` 并排、`by =` 出多个环、grid 层手工叠 grob；
+  (3) `annotation_custom()` 在 `coord_circos()` 下报错
+  （"only works with coord_cartesian()"），要支持就得为它开一个新坐标路径，代价与收益不匹配。
 - **自环（`from == to`）**：`self_loops = FALSE`（默认）时丢弃并 `cli_inform()` 提示；
   `self_loops = TRUE` 时画成**向内折的小回环**（§4.7，v0.2）。
 - **不做** 自动轴范围推断：轴必须显式给 `limits`（§6.5）。
