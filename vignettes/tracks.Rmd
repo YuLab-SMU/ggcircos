@@ -497,6 +497,110 @@ Two behaviours are worth knowing:
 Both geometries need at least three finite values with some spread per node;
 a node that has none is skipped, and a layer where no node qualifies warns.
 
+## Genomic intervals
+
+Everything so far places one value per node: one column, one point, one
+distribution. A genomic feature is not a value, it is a **range** -- a gene
+spans `start` to `end`, a CNV segment covers a stretch of the chromosome, a
+peak has a width. Squeezing that into a single position loses the one thing
+the data actually says.
+
+`geom_track()` accepts a range instead of a point. Map `xmin` and `xmax`
+rather than `x`, and name the column that holds each node's coordinate
+ceiling:
+
+```{r interval-data}
+chrom <- data.frame(
+  id  = c("chr1", "chr2"),
+  len = c(4000, 1500)          # a node's coordinate ceiling, per node
+)
+features <- data.frame(
+  id    = c("chr1", "chr1", "chr1", "chr2", "chr2"),
+  start = c(200, 1400, 2800, 100, 900),
+  end   = c(1100, 2100, 3300, 700, 1400),
+  score = c(0.9, 0.4, 0.7, 0.6, 0.8)
+)
+int_links <- data.frame(from = c("chr1", "chr2"), to = c("chr2", "chr1"))
+```
+
+`domain = len` is what makes the ring readable: each node is normalised on
+its **own** length, so a 4000-long chromosome and a 1500-long one both fill
+their own arc. Without a `domain`, each node falls back to the largest `end`
+it reports, which is right when the data already covers the whole thing and
+wrong when it does not.
+
+```{r interval-plot, fig.width = 6, fig.height = 6, fig.cap = "A genomic interval track. Each node is scaled to its own chromosome length, so the features sit at their true position rather than being spread evenly. The radius carries the score."}
+interval_plot <- ggcircos(int_links, nodes = chrom, tracks = c(features = 0.22)) +
+  geom_chord(fill = "grey92") +
+  geom_track(
+    data = features,
+    aes(xmin = start, xmax = end, x = score),
+    node = id,
+    band = "features",
+    domain = len,
+    fill = "steelblue"
+  ) +
+  geom_node_arc() +
+  geom_node_text()
+interval_plot
+```
+
+Three things follow from the range model:
+
+* an interval row is **not divided** among its neighbours. Two features on
+  the same node each occupy the arc their coordinates name, even when they
+  are far apart or on top of each other -- the even division that turns many
+  rows into a heatmap or a coverage profile does not apply here;
+* `x` is still the **radius**. Map it when a feature has a value worth
+  showing as height; leave it out and the rectangle fills the band instead,
+  which is what a gene model or an ideogram wants;
+* `origin` defaults to `0`. Give `origin = 1` for a 1-based coordinate
+  system, so a feature starting at `1` sits at the very start of the arc
+  rather than one base pair in.
+
+The axis is still an ordinary numeric axis: `geom_track_axis(band = "features",
+limits = c(0, 4000))` labels the band in base pairs. Turning that into
+`chr1:1,000,000` style ticks is not something this package does yet.
+
+
+## Thresholds
+
+A track's `y` is an **angle**, so `geom_hline()` lands on a piece of the
+circle rather than at a height in the band:
+
+```{r hline-why, eval = FALSE}
+geom_track(...) + geom_hline(yintercept = 0.5)   # draws at theta = 0.5 rad
+```
+
+For a threshold in the band's own units -- a copy-number zero line, a
+significance cut-off, a mean -- use `geom_track_hline()`. The value goes
+through the **same** normalisation the track's values went through, so the
+line and the bars can never disagree about the scale.
+
+```{r hline-plot, fig.width = 6, fig.height = 6, fig.cap = "A threshold line at 0.5 on a [0, 1] scale. It sits at the middle of the band and is drawn inside each node, so it never crosses the gaps."}
+threshold_plot <- ggcircos(m, order = "hclust", tracks = c(score = 0.2)) +
+  geom_chord(fill = "grey92") +
+  geom_track(
+    data = data.frame(id = colnames(mtcars),
+                      score = seq(0.15, 0.85, length.out = ncol(mtcars))),
+    aes(x = score), node = id, band = "score",
+    scales = "fixed", limits = c(0, 1)
+  ) +
+  geom_track_hline(band = "score", value = 0.5) +
+  geom_node_arc() +
+  geom_node_text()
+threshold_plot
+```
+
+Three details:
+
+* the line is drawn **per node**, one arc inside each node's own span, so it
+  reads as "this node's threshold" and the gaps between nodes stay clear;
+* `limits` and `scales` are read from the `geom_track()` layer for that band,
+  so the threshold cannot drift from the axis that labels it;
+* `value` takes a vector -- `value = c(0.25, 0.75)` draws two lines.
+
+
 ## What this does not do yet
 
 * **No label collision avoidance.** `geom_node_text()` puts one label on

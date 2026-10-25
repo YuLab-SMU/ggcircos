@@ -1166,6 +1166,52 @@ contig 都铺满自己的弧，这是 per-node domain 的意义。
 回归测试：`tests/testthat/test-interval-track.R`（5 个用例：铺满整弧、各自归一化、
 无 domain 按数据范围、不被邻行分割、五条错误路径）。
 
+### F2. 轨道内的阈值线：`geom_track_hline()` —— **已落地（2026-10-25）**
+
+`geom_hline(yintercept = 0.5)` 在本包里画到**角度 0.5** 上，不是轨道值 0.5 上——
+因为 track 的 `y` 就是角度（§4.2）。基因组图几乎一定要画阈值（拷贝数 0 线、显著性
+阈值、均值线），而手工把"轨道值 → 半径"换算一遍既啰嗦、又容易和 `scales`/`limits`
+的设定脱节。
+
+**机制**（spec §6.4b）：`value` 经过**与 `geom_track()` 同一条**归一化——直接借用它那一层
+的 `PositionTrack`（同 `scales`/`limits`/`baseline`），而不是重建一份。这是本 geom 存在的
+唯一理由：线必须永远和它标注的数据在同一把尺子上。线**按节点分段**画（每个节点弧内一段），
+读起来是"每个节点自己的阈值"，而不是一根穿过间隙的圆环。
+
+**⚠ 实现时踩的两个坑**
+
+1. **忘了注册 S3 方法**。`ggplot_add.ggcircos_hline` 写好了，但 NAMESPACE 里没有它，
+   于是 `p + geom_track_hline()` 静默走了父类方法——`data` 根本没被填，报的是
+   "geom_segment requires missing aesthetics"，指向完全无关的地方。
+   `devtools::document()` 之后才注册上。**新 S3 方法一定要跑一次 document 再测。**
+
+2. **`re_add()` 的 class 清单是硬编码的**，漏了 `ggcircos_hline` 会让去 class 失败。
+   每加一个 `ggcircos_*` 图层类型，都要同步改 `re_add()` 的 `setdiff()` 列表。
+
+回归测试：`tests/testthat/test-track-hline.R`（5 个用例：值是值不是角度、跟随
+`scales`/`limits`、按节点分段跳过间隙、超界夹到边界并提示、向量画多条线）。
+把归一化换成"直接用原值"后连红 3 条，确认抓的是真因。
+
+### F3. `column_or_string()` 在 knitr 环境里抛错 —— **已修（2026-10-25）**
+
+补区间轨道 vignette 时发现：`domain = len` 这种**裸符号列名**在 knitr chunk 里
+报 `object 'len' not found`，而在控制台和普通函数里都正常。
+
+根因是 `column_or_string()` 先 `eval_tidy()` 求值符号、失败才回退到"当列名"。
+knitr 的求值环境链让那次失败以不同方式逃出 `tryCatch`。这个 bug 影响**所有**用裸符号
+传列名的参数（`node =`、`slot =`、`domain =`）——只要用户在脚本或包里调，不是只在 notebook 里。
+
+**修法**：符号分两种读法，都要支持——
+`node = id`（列名，符号只存在于数据里）与 `col <- "id"; node = col`（符号存着名称）。
+用手写的 `get0(..., ifnotfound = NULL)` 取一次：拿到字符串就用它，否则用符号自己的名字。
+不依赖 `eval_tidy` 的异常路径。
+
+**教训**："先求值、失败再当字面量"这种控制流，在不同环境链下行为会变。
+能用无异常的方式判定，就别用异常做分支。
+
+回归测试：vignette `tracks.Rmd` 的区间一节直接用 `domain = len`
+（既有测试 `"the node column can be unquoted"` 也覆盖 `node = col` 的写法）。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

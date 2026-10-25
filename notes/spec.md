@@ -972,6 +972,52 @@ position_track(band, node = NULL, geom_name = NULL, anchored = FALSE,
 - **回归测试**：同一个 `position_track()` 对象挂在两个 `geom_track()` 层上，两层 `ggplot_build()` 的
   `x` 映射完全一致（说明没有被其中一层改写）。
 
+### 6.4b `geom_track_hline()` — 轨道内的阈值线（v0.3）
+
+**问题**：`geom_hline(yintercept = 0.5)` 在本包里画到**角度 0.5** 上，
+不是轨道值 0.5 上（`y` 是角度，这是 §4.2 的直接后果）。实测确认：
+
+```r
+ggcircos(lay, tracks = c(g = .2)) +
+  geom_track(data = trk, aes(x = v), node = id, band = "g") +
+  geom_hline(yintercept = 0.5)          # 画在 θ = 0.5 rad，语义完全错
+```
+
+基因组图几乎一定要画阈值：拷贝数 0 线、显著性阈值、均值线。现在只能手工把
+"轨道值 → 半径"换算一遍，既啰嗦又容易和 `scales`/`limits` 的设定脱节。
+
+**契约**
+
+```r
+geom_track_hline(band, value, ...)      # 一条或多条阈值
+geom_track_vline(band, angle, ...)      # 可选：指定角度处的径向线
+```
+
+1. **`value` 是轨道值，不是半径**。它经过**与 `geom_track()` 同一条**归一化
+   （同一个 `PositionTrack`、同一组 `scales`/`limits`/`baseline`）换算成半径，
+   所以阈值线与它标注的数据永远在同一把尺子上。这是本 geom 存在的唯一理由——
+   手工换算做不到"跟着图层的设置走"。
+2. **`band` 与 `geom_track()` 同义**：已声明轨道名，或显式 `c(r0, r1)`。
+3. **一条阈值画成整圈的弧**：在每个节点的弧段内画一段，节点之间的间隙不画。
+   这样它读起来是"每个节点都有自己的阈值线"，而不是一根穿过间隙的圆环。
+   `geom = "tile"` 的 `band_fill` 走的是同一条"按节点切段"的路子。
+4. **`limits` 缺省时从同 band 的 track 层取**（与 §6.5 的轴同一条规则），
+   保证线和轴标的是同一个范围；取不到且有 `scales = "fixed"` 时报
+   `ggcircos_error_data`。
+5. `value` 可以是向量 → 多条阈值线（多个 `group`）。
+
+**回归测试**
+
+1. `value` 落在 `[0,1]` 中点时，线的半径等于 band 的中点（不是角度 0.5）；
+2. 同一条阈值在 `scales = "fixed"` 与 `"free"` 下位置不同，且各自与
+   `geom_track()` 的柱子高度对齐（逐位比对）；
+3. 节点间隙里没有线（线的 `ymin/ymax` 逐节点落在 `theta0..theta1` 内）；
+4. `value` 超出 `limits` 时报错或夹到边界（选夹，与 `oob = squish` 一致），
+   并给一次 `cli_inform`；
+5. 向量 `value` → 多条线，各自半径正确。
+
+---
+
 ### 6.5 `geom_track_axis()`
 
 ```r

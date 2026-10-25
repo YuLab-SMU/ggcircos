@@ -343,6 +343,133 @@ layout_slots <- function(lay, from, to) {
     )
 }
 
+#' Threshold lines: turn a value into radii, then one arc per node
+#'
+#' The value has to go through the *same* normalisation the band's data went
+#' through, or the line and the bars disagree (spec sec.6.4b). That
+#' normalisation lives on the track layer's `PositionTrack`, so it is borrowed
+#' rather than rebuilt: same `scales`, same `limits`, same `baseline`.
+#'
+#' @importFrom ggplot2 ggplot_add
+#' @keywords internal
+#' @noRd
+#' @exportS3Method ggplot2::ggplot_add
+ggplot_add.ggcircos_hline <- function(object, plot, object_name, ...) {
+    params <- layer_settings(object)
+    band <- params$band
+    band_name <- params$band_name
+
+    # the band may be omitted: inherit it from a track layer already on the plot
+    if (is.null(band) && is.null(band_name)) {
+        for (layer in plot$layers) {
+            st <- layer_settings(layer)
+            if (!is.null(st$band)) {
+                band <- st$band
+                band_name <- st$band_name
+                break
+            }
+        }
+        if (is.null(band)) {
+            ggcircos_abort(
+                "band",
+                c(
+                    "{.fn geom_track_hline} cannot tell which band to draw in.",
+                    i = "Add the {.fn geom_track} layer first, or pass {.arg band}."
+                )
+            )
+        }
+    }
+
+    lays <- circos_layouts_of(plot)
+    lay <- if (is.null(lays)) require_layout(plot, object_name) else lays[[1]]
+    nt <- layout_node_table(lay)
+    # the radii of the band the caller named
+    band_r <- track_band(band_name, band, nt)
+
+    # borrow the normalisation from the track layer that fills this band
+    norm <- hline_normalisation(plot, band_r, band_name)
+    value <- params$value
+
+    node_lo <- nt$theta0
+    node_hi <- nt$theta1
+    out <- do.call(rbind, lapply(seq_along(value), function(k) {
+        r <- norm$to_radius(value[k])
+        r <- clip_to_band(r, band_r, value[k])
+        data.frame(
+            x = r, xend = r,
+            y = node_lo, yend = node_hi,
+            PANEL = 1L, group = k,
+            stringsAsFactors = FALSE
+        )
+    }))
+    object$data <- out
+    # `.data$` keeps R CMD check quiet about the column names and, more to the
+    # point, says these are columns of the frame we just built
+    object$mapping <- ggplot2::aes(x = .data$x, xend = .data$xend,
+                                   y = .data$y, yend = .data$yend,
+                                   group = .data$group)
+    object$inherit.aes <- FALSE
+    if (is.null(object$geom_params$colour)) object$geom_params$colour <- "grey30"
+    re_add(drop_geometry_params(object), plot, object_name)
+}
+
+#' The value -> radius mapping a band's track layer used
+#'
+#' Falls back to the layout's own band when no track layer is present: then
+#' there is no normalisation to borrow, and the threshold is read as a fraction
+#' of the band (`value` in `[0, 1]`).
+#' @keywords internal
+#' @noRd
+hline_normalisation <- function(plot, band_r, band_name) {
+    for (layer in plot$layers) {
+        st <- layer_settings(layer)
+        same <- (!is.null(band_name) && identical(st$band_name, band_name)) ||
+            (is.numeric(st$band) && isTRUE(all.equal(as.numeric(st$band), as.numeric(band_r))))
+        if (!same || !inherits(layer$position, "PositionTrack")) next
+        pos <- layer$position
+        return(list(
+            to_radius = function(v) {
+                rng <- pos$limits
+                if (!identical(pos$scales, "fixed") || is.null(rng)) {
+                    rng <- pos$value_range
+                }
+                position_map_radius(v, band_r, rng, pos$baseline, pos$scales)
+            }
+        ))
+    }
+    list(to_radius = function(v) {
+        # no track to borrow from: `value` is a fraction of the band
+        band_r[1] + (band_r[2] - band_r[1]) * v
+    })
+}
+
+#' @keywords internal
+#' @noRd
+position_map_radius <- function(v, band_r, rng, baseline, scales) {
+    if (is.null(rng) || !length(rng) || diff(range(rng)) == 0) {
+        return(rep(mean(band_r), length(v)))
+    }
+    base <- baseline
+    if (is.null(base)) base <- if (all(rng >= 0)) 0 else min(rng)
+    span <- if (identical(scales, "fixed")) rng else c(base, max(rng))
+    if (diff(span) == 0) return(rep(mean(band_r), length(v)))
+    frac <- (v - span[1]) / diff(span)
+    band_r[1] + (band_r[2] - band_r[1]) * frac
+}
+
+#' @keywords internal
+#' @noRd
+clip_to_band <- function(r, band_r, value) {
+    out <- pmin(pmax(r, band_r[1]), band_r[2])
+    if (any(out != r)) {
+        cli::cli_inform(c(
+            "i" = "Threshold{?s} {.val {value[out != r]}} lie outside the band; \
+                   drawn at the band edge."
+        ))
+    }
+    out
+}
+
 #' Track layers: hand the node table to the position
 #'
 #' @importFrom ggplot2 ggplot_add

@@ -120,6 +120,23 @@ column_name <- function(quo, arg) {
 column_or_string <- function(quo, arg) {
     expr <- rlang::quo_get_expr(quo)
     if (is.character(expr) && length(expr) == 1L) return(expr)
+    # A bare symbol has two readings and both are wanted:
+    #   `node = id`      -> the column is called "id" (symbol only in the data)
+    #   `col <- "id"; node = col` -> the symbol holds the name
+    # So resolve it *without letting a lookup failure escape*: pick up a bound
+    # string if there is one, otherwise take the symbol's own name. Doing this
+    # by hand matters -- `eval_tidy()`'s "object not found" escaped the handler
+    # below inside a knitr chunk, where the environment chain differs from the
+    # console.
+    if (rlang::is_symbol(expr)) {
+        val <- tryCatch(
+            get0(rlang::as_name(expr), envir = rlang::quo_get_env(quo),
+                 inherits = TRUE, ifnotfound = NULL),
+            error = function(e) NULL
+        )
+        if (is.character(val) && length(val) == 1L) return(val)
+        return(rlang::as_name(expr))
+    }
     # `node = params$node` (internal) and `node = col` where `col` is a string
     # both resolve here; a symbol with nothing behind it is a column name --
     # including one that only exists in the layer's data (edge_id, say), which
@@ -197,7 +214,8 @@ circos_stacked <- function(plot, kind = c("nodes", "sectors", "tracks")) {
 
 re_add <- function(object, plot, object_name) {
     class(object) <- setdiff(class(object), c(
-        "ggcircos_chord", "ggcircos_node", "ggcircos_track", "ggcircos_axis"
+        "ggcircos_chord", "ggcircos_node", "ggcircos_track", "ggcircos_axis",
+        "ggcircos_hline"
     ))
     ggplot2::ggplot_add(object, plot, object_name)
 }
