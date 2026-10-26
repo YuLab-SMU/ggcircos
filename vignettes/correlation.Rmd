@@ -220,6 +220,11 @@ a square symmetric matrix, a data frame with `from`/`to`, an igraph or
 tbl_graph object. Anything else becomes one of those three before the layout
 sees it.
 
+The *links* are all these have to offer. A node can also carry a range -- a
+gene on a chromosome, a confidence interval, a period -- drawn in a band
+around the ring. That is a track, and it takes `xmin`/`xmax` instead of a
+single value: `vignette("tracks")`, section "Genomic intervals".
+
 ## Getting the layout back as data
 
 The layout is not hidden inside the plot. `circos_layout()` returns it, and
@@ -238,12 +243,12 @@ Every column the geoms use is there: `theta0`/`theta1` are the node's arc,
 and a link's `theta0`/`theta1` are the two slots it occupies. You can filter
 it, join it, or feed it to your own geoms:
 
-```{r custom-geom, fig.width = 5, fig.height = 5, fig.cap = "A hand-drawn node ring: geom_segment() over the layout table, no package geoms."}
+```{r custom-geom, fig.width = 5, fig.height = 5, fig.cap = "A hand-drawn node ring: geom_rect() over the layout table, no package geoms."}
 nd <- layout_nodes(lay)
-ggplot(nd, aes(x = 1, y = theta0)) +
-  geom_segment(aes(x = 1, xend = 1, y = theta0, yend = theta1), linewidth = 4) +
+ggplot(nd, aes(xmin = 1, xmax = 1.04, ymin = theta0, ymax = theta1)) +
+  geom_rect(aes(fill = sector)) +
   coord_circos(limits = c(0, 2 * pi)) +
-  theme_circos()
+  theme_circos(legend.position = "none")
 ```
 
 This is the whole point of the design: the layout is data, the geoms are

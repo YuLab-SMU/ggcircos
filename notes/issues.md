@@ -1294,6 +1294,25 @@ roxygen 与 `tracks.Rmd` 都补了"maximum, not the span"。
 回归测试：`"domain is the coordinate ceiling, not the span (F6)"` —— 错用法报
 `ggcircos_error_data`，正用法下 3..5 落在 0..10 轴上正好 20% 弧。去掉校验后该测试变红。
 
+### C7. `correlation.Rmd` 的 `custom-geom` 同样是空白图 —— **已修（2026-10-26）**
+
+给 `correlation.Rmd` 加区间交叉引用时顺手量了一下它的图，发现 `custom-geom` chunk
+的墨水是 **0.00%**——和上一轮 README 那张**一模一样的 bug**：`geom_segment()` 全部画在
+固定的 `x = 1` 上，而半径轴自 coord-expand 修复后只按数据撑开，于是图整个空白。
+
+**上一轮我只修了 README，没检查 vignette。** 同一个错误写法在文档里出现了两次，
+修了一处不等于修了另一处。这次量了三个 vignette 的图：其余 chunk 的墨水都在 10–28%
+（正常），只有这一处是 0。
+
+修法：改成 `geom_rect(xmin = 1, xmax = 1.04, ...)`，与 README 同一种形状；
+修后墨水 38.77%。
+
+**并补了守卫**：`test-figure-ink.R` 增加一条用例，按这个 chunk 的写法自建图并断言墨水。
+以后这类"文档自建 ggplot"再变空白，测试会拦住。
+
+**教训**：**修一处不代表修完。** 同一个错误写法在多个文档里出现时，要按**模式**搜索
+（`grep "aes(x = 1"`），而不是只修报出来的那一处。
+
 ## C 类：测试与工程（不阻塞，但要有）
 
 ### C1. 没有视觉回归快照 —— **已建基线（2026-10-19）**

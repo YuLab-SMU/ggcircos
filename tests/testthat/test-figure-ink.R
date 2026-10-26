@@ -30,6 +30,23 @@ test_that("a hand-built circular plot from layout_nodes() is not blank", {
     expect_gt(ink_of(p), 0.02)
 })
 
+test_that("the hand-drawn ring in correlation.Rmd is not blank", {
+    skip_if_not_installed("png")
+    # This chunk lived in the vignette as `geom_segment()` at a fixed x = 1 --
+    # exactly the shape that came out blank in the README, and it was blank
+    # here too (0.00% ink) until the radius axis was given a span. Docs build
+    # plots by hand from layout_nodes(), so they walk a path `ggcircos()`
+    # never does; every such chunk needs this guard.
+    lay <- circos_layout(cor(mtcars)[1:6, 1:6], order = "hclust")
+    nd <- layout_nodes(lay)
+    p <- ggplot2::ggplot(nd, ggplot2::aes(xmin = 1, xmax = 1.04,
+                                          ymin = theta0, ymax = theta1)) +
+        ggplot2::geom_rect(ggplot2::aes(fill = sector)) +
+        coord_circos(limits = c(0, 2 * pi)) +
+        theme_circos(legend.position = "none")
+    expect_gt(ink_of(p), 0.02)
+})
+
 test_that("a blank figure is caught by the same check", {
     skip_if_not_installed("png")
     # the guard has to fail on the thing it exists for
