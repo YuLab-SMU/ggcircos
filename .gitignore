@@ -12,3 +12,6 @@ plot.rds
 
 # rendered from README.Rmd for GitHub, not committed
 README.html
+
+# pkgdown output, built by .github/workflows/pkgdown.yaml
+/docs/

@@ -1,19 +1,25 @@
 Package: ggcircos
 Title: Circular Layouts and Chord Diagrams for 'ggplot2'
 Version: 0.1.0
-Authors@R: 
-    person(given = "Shuangbin",
-           family = "Xu",
-           role = c("aut", "cre"),
-           email = "xshuangbin@163.com",
-           comment = c(ORCID="0000-0003-3513-5362"))
-Description: Build chord diagrams, circular tracks and genome-scale link
-    maps with the grammar of graphics. The layout — node arcs, sectors and
-    the angular slot reserved for every link — is computed once and kept as
-    data, so every layer is an ordinary 'ggplot2' layer and scales, facets
-    and themes work as usual.
+Authors@R:
+    c(person(given = "Guangchuang",
+             family = "Yu",
+             role = c("aut", "cre"),
+             email = "guangchuangyu@gmail.com",
+             comment = c(ORCID = "0000-0002-6485-8781")),
+      person(given = "Shuangbin",
+             family = "Xu",
+             role = "aut",
+             email = "xshuangbin@163.com",
+             comment = c(ORCID = "0000-0003-3513-5362")))
+Description: Build chord diagrams, circular tracks and genome-scale link maps
+    with the grammar of graphics. The layout (node arcs, sectors, and the
+    angular slot reserved for every link) is computed once and kept as data,
+    so every layer is an ordinary 'ggplot2' layer and scales, facets and
+    themes work as usual. Tracks accept a single value per node or a genomic
+    interval, and a ring may be split into one independent circle per group.
 License: GPL-3
-URL: https://yulab-smu.github.io/ggcircos
+URL: https://yulab-smu.github.io/ggcircos/
 BugReports: https://github.com/YuLab-SMU/ggcircos/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
